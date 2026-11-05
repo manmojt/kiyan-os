@@ -1,0 +1,18 @@
+# Signing material is never committed.
+/cosign.key
+/.cosign-password
+*.private
+*.key
+
+# Local build and generated distribution artifacts.
+/output/
+/build/
+*.iso
+*.iso.sha256
+*.iso.sig
+*.iso.part-*
+*.bundle
+*.log
+__pycache__/
+*.py[cod]
+/.bluebuild-scripts_*

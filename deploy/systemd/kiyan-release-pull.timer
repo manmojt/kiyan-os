@@ -1,0 +1,13 @@
+[Unit]
+Description=Check periodically for a new Kiyan OS ISO release
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=15min
+AccuracySec=1min
+RandomizedDelaySec=90s
+Persistent=true
+Unit=kiyan-release-pull.service
+
+[Install]
+WantedBy=timers.target

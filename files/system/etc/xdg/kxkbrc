@@ -1,0 +1,6 @@
+[Layout]
+DisplayNames=us,ir
+LayoutList=us,ir
+Model=pc105
+Options=grp:alt_shift_toggle
+Use=true

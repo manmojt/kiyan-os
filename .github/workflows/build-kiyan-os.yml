@@ -1,0 +1,152 @@
+name: Build Kiyan OS LB1
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kiyan-os-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-image:
+    if: github.ref == 'refs/heads/main'
+    name: Build and sign OCI image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build and push with BlueBuild
+        uses: blue-build/github-action@c295af864f2802fc6aea227507af43d35823db81 # v1.13.0
+        with:
+          recipe: recipe.yml
+          cli_version: v0.9.41
+          verify_install: true
+          cosign_private_key: ${{ secrets.SIGNING_SECRET }}
+          registry: ghcr.io
+          registry_namespace: manmojt
+          registry_token: ${{ github.token }}
+          registry_username: ${{ github.repository_owner }}
+          pr_event_number: ${{ github.event.number || 0 }}
+          chunkah: true
+          maximize_build_space: true
+
+      - name: Set the GHCR package public for keyless VPS pulls
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api --method PATCH /user/packages/container/kiyan-os/visibility -f visibility=public
+
+  build-iso-and-publish:
+    if: github.ref == 'refs/heads/main'
+    name: Build ISO and publish signed release
+    needs: build-image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: read
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install ISO signature inspection tool
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes sbsigntool
+
+      - name: Build bootc generic ISO with pinned image-builder
+        env:
+          IMAGE_BUILDER: ghcr.io/osbuild/image-builder-cli@sha256:b23239209d2876cabeb44b16c96796d4a18c0810ff5ae1af3a26201e09d7c765
+          IMAGE_REF: ghcr.io/manmojt/kiyan-os:latest
+        run: |
+          set -euo pipefail
+          mkdir -p output
+          docker run --pull=always --privileged --rm \
+            --volume "$GITHUB_WORKSPACE/output:/output" \
+            "$IMAGE_BUILDER" \
+            build --bootc-ref "$IMAGE_REF" --bootc-default-fs ext4 generic-iso
+
+      - name: Validate ISO boot entries and signed UEFI shim
+        env:
+          IMAGE_BUILDER: ghcr.io/osbuild/image-builder-cli@sha256:b23239209d2876cabeb44b16c96796d4a18c0810ff5ae1af3a26201e09d7c765
+        run: |
+          set -euo pipefail
+          mapfile -t built_isos < <(find output -maxdepth 2 -type f -name '*.iso' -print)
+          if (( ${#built_isos[@]} != 1 )); then
+            printf 'Expected one ISO, found %s\n' "${#built_isos[@]}" >&2
+            exit 1
+          fi
+          iso=output/Kiyan-OS-LB1-x86_64.iso
+          mv "${built_isos[0]}" "$iso"
+          test -s "$iso"
+          file "$iso"
+
+          docker run --rm --volume "$GITHUB_WORKSPACE/output:/output" \
+            --entrypoint /usr/bin/xorriso "$IMAGE_BUILDER" \
+            -indev /output/Kiyan-OS-LB1-x86_64.iso -report_el_torito plain \
+            | tee output/boot-media-report.txt
+          grep -qi 'BIOS' output/boot-media-report.txt
+          grep -qi 'UEFI' output/boot-media-report.txt
+
+          docker run --rm --volume "$GITHUB_WORKSPACE/output:/output" \
+            --entrypoint /usr/bin/xorriso "$IMAGE_BUILDER" \
+            -osirrox on -indev /output/Kiyan-OS-LB1-x86_64.iso \
+            -extract /EFI/BOOT/BOOTX64.EFI /output/BOOTX64.EFI
+          test -s output/BOOTX64.EFI
+          sbverify --list output/BOOTX64.EFI
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.1.4
+          install-dir: ${{ runner.temp }}/cosign-bin
+
+      - name: Sign ISO and split it into GitHub Release-sized assets
+        env:
+          COSIGN_PRIVATE_KEY: ${{ secrets.SIGNING_SECRET }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          iso=output/Kiyan-OS-LB1-x86_64.iso
+          key="$RUNNER_TEMP/cosign.key"
+          umask 077
+          printf '%s\n' "$COSIGN_PRIVATE_KEY" > "$key"
+          "$RUNNER_TEMP/cosign-bin/cosign" sign-blob --yes --key "$key" \
+            --bundle "$iso.sigstore.json" "$iso"
+          (cd output && sha256sum Kiyan-OS-LB1-x86_64.iso > Kiyan-OS-LB1-x86_64.iso.sha256)
+          split --bytes=1800MiB --numeric-suffixes=0 --suffix-length=3 \
+            "$iso" "$iso.part-"
+
+      - name: Publish versioned public release for the VPS pull timer
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="kiyan-lb1-${GITHUB_RUN_NUMBER}-${GITHUB_SHA:0:12}"
+          mapfile -t parts < <(find output -maxdepth 1 -type f -name 'Kiyan-OS-LB1-x86_64.iso.part-*' -print | sort)
+          if (( ${#parts[@]} == 0 )); then
+            echo 'ISO split produced no release assets' >&2
+            exit 1
+          fi
+          gh release create "$tag" \
+            --target "$GITHUB_SHA" \
+            --title "Kiyan OS LB1 ${GITHUB_RUN_NUMBER}" \
+            --notes "Automated, signed Kiyan OS LB1 ISO for commit ${GITHUB_SHA}." \
+            --latest \
+            output/Kiyan-OS-LB1-x86_64.iso.sha256 \
+            output/Kiyan-OS-LB1-x86_64.iso.sigstore.json \
+            "${parts[@]}"

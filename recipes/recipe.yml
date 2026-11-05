@@ -1,0 +1,95 @@
+---
+# yaml-language-server: $schema=https://schema.blue-build.org/recipe-v1.json
+version: 1
+name: kiyan-os
+description: Kiyan OS (LB1 — Let's Be One), a KDE bootc image based on Bazzite
+base-image: ghcr.io/ublue-os/bazzite
+image-version: stable
+blue-build-tag: v0.9.41-installer
+cosign-version: v3.1.4
+
+modules:
+  - type: dnf
+    repos:
+      nonfree: rpmfusion
+    install:
+      packages:
+        - alsa-sof-firmware
+        - apfs-fuse
+        - aria2
+        - bubblewrap
+        - ddcutil
+        - dislocker
+        - dnsmasq
+        - dracut-live
+        - ffmpeg
+        - fprintd
+        - fprintd-pam
+        - glibc-langpack-en
+        - glibc-langpack-fa
+        - grub2-common
+        - grub2-efi-x64-cdboot
+        - grub2-pc-modules
+        - grub2-tools
+        - hostapd
+        - isomd5sum
+        - libheif-tools
+        - librsvg2-tools
+        - linux-firmware
+        - mpv
+        - openssl
+        - p7zip
+        - podman
+        - plymouth
+        - plymouth-plugin-script
+        - python3
+        - qrencode
+        - shim-x64
+        - squashfs-tools
+        - unrar
+        - xorriso
+        - yt-dlp
+
+  - type: files
+    files:
+      - source: system
+        destination: /
+
+  - type: fonts
+    fonts:
+      google-fonts:
+        - Vazirmatn
+
+  - type: script
+    scripts:
+      - setup-kernel-hw.sh
+      - gen-kiyan-identity.sh
+
+  - type: kargs
+    kargs:
+      - i915.enable_guc=3
+      - i915.enable_fbc=1
+      - quiet
+      - splash
+      - loglevel=3
+      - snd_intel_dspcfg.dsp_driver=3
+
+  - type: systemd
+    system:
+      enabled:
+        - kiyan-touchpad-watchdog.timer
+
+  - type: signing
+
+  # Keep the OS identity module after package/repository work; changing ID early
+  # can confuse Fedora/COPR identification during the image build.
+  - type: os-release
+    properties:
+      NAME: Kiyan OS
+      PRETTY_NAME: "Kiyan OS (LB1 — Let's Be One)"
+      ID: kiyan
+      ID_LIKE: fedora
+      DEFAULT_LOCALE: en_US.UTF-8
+
+  # This must follow the hardware, live-ISO, and Plymouth configuration above.
+  - type: initramfs
