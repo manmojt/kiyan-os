@@ -5,7 +5,7 @@ ConditionPathExists=/usr/bin/modprobe
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/libexec/kiyan-touchpad-watchdog.sh
+ExecStart=/usr/libexec/kiyan-touchpad-watchdog.sh
 TimeoutStartSec=20s
 NoNewPrivileges=yes
 ProtectSystem=strict
