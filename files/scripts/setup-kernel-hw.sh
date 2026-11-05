@@ -47,7 +47,7 @@ install -m 0644 "${gcd_candidates[0]}" "/boot/efi/EFI/${vendor}/gcdx64.efi"
 # Define the generic ISO's label and GRUB menu without a serial console entry.
 install -d -m 0755 /usr/lib/image-builder/bootc
 cat > /usr/lib/image-builder/bootc/iso.yaml <<'EOF'
-label: "Kiyan OS LB1"
+label: "KIYAN_OS_LB1"
 kernel_args:
   - quiet
   - splash
