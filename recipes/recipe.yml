@@ -18,7 +18,6 @@ modules:
         - apfs-fuse
         - aria2
         - bubblewrap
-        - ddcutil
         - dislocker
         - dnsmasq
         - dracut-live
@@ -49,6 +48,9 @@ modules:
         - unrar
         - xorriso
         - yt-dlp
+
+    # Bazzite already ships terra-ddcutil, which provides ddcutil. Installing
+    # Fedora's conflicting ddcutil package would break the base image package set.
 
   - type: files
     files:
