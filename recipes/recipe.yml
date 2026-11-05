@@ -5,8 +5,8 @@ name: kiyan-os
 description: Kiyan OS (LB1 — Let's Be One), a KDE bootc image based on Bazzite
 base-image: ghcr.io/ublue-os/bazzite
 image-version: stable
-blue-build-tag: v0.9.41-installer
-cosign-version: v3.1.4
+blue-build-tag: v0.9.41
+cosign-version: 3.1.4
 
 modules:
   - type: dnf
