@@ -59,7 +59,17 @@ jobs:
       - name: Install ISO signature inspection tool
         run: |
           sudo apt-get update
-          sudo apt-get install --yes sbsigntool
+          sudo apt-get install --yes sbsigntool sqlite3
+
+      - name: Configure rootful Podman storage for image-builder
+        run: |
+          set -euo pipefail
+          sudo mkdir -p /etc/containers
+          printf '[storage]\ndriver = "overlay"\nrunroot = "/run/containers/storage"\ngraphroot = "/var/lib/containers/storage"\n' \
+            | sudo tee /etc/containers/storage.conf >/dev/null
+          sudo podman info >/dev/null
+          echo "update DBConfig set GraphDriver = 'overlay' where GraphDriver = '';" \
+            | sudo sh -c '(cd /var/lib/containers/storage && sqlite3 db.sql)'
 
       - name: Build bootc generic ISO with pinned image-builder
         env:
@@ -68,10 +78,14 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p output
-          docker run --pull=always --privileged --rm \
+          sudo podman pull "$IMAGE_REF"
+          sudo podman run --pull=newer --privileged --rm \
+            --security-opt label=type:unconfined_t \
             --volume "$GITHUB_WORKSPACE/output:/output" \
+            --volume /var/lib/containers/storage:/var/lib/containers/storage \
             "$IMAGE_BUILDER" \
-            build --bootc-ref "$IMAGE_REF" --bootc-default-fs ext4 generic-iso
+            build --output-dir /output --bootc-ref "$IMAGE_REF" \
+            --bootc-default-fs ext4 generic-iso
 
       - name: Validate ISO boot entries and signed UEFI shim
         env:
