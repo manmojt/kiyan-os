@@ -21,7 +21,12 @@ EOF
 
 # image-builder expects the signed shim/GRUB EFI vendor tree under /boot/efi.
 shopt -s nullglob
-vendor_dirs=(/usr/lib/efi/shim/*EFI/*)
+vendor_dirs=()
+for candidate in /usr/lib/efi/shim/*/EFI/*; do
+  if [[ -d "$candidate" && "${candidate##*/}" != BOOT ]]; then
+    vendor_dirs+=("$candidate")
+  fi
+done
 if (( ${#vendor_dirs[@]} != 1 )) || [[ ! -d "${vendor_dirs[0]}" ]]; then
   printf 'Expected exactly one signed shim vendor directory, found %s\n' "${#vendor_dirs[@]}" >&2
   exit 1
@@ -29,6 +34,15 @@ fi
 vendor="${vendor_dirs[0]##*/}"
 install -d -m 0755 "/boot/efi/EFI/${vendor}"
 cp -a "${vendor_dirs[0]}"/. "/boot/efi/EFI/${vendor}/"
+
+# The generic-ISO boot path uses Fedora's signed CD GRUB binary (gcdx64.efi).
+gcd_candidates=(/usr/lib/efi/grub2/*/EFI/"${vendor}"/gcdx64.efi)
+if (( ${#gcd_candidates[@]} != 1 )) || [[ ! -f "${gcd_candidates[0]}" ]]; then
+  printf 'Expected exactly one gcdx64.efi for vendor %s, found %s\n' \
+    "$vendor" "${#gcd_candidates[@]}" >&2
+  exit 1
+fi
+install -m 0644 "${gcd_candidates[0]}" "/boot/efi/EFI/${vendor}/gcdx64.efi"
 
 # Define the generic ISO's label and GRUB menu without a serial console entry.
 install -d -m 0755 /usr/lib/image-builder/bootc
