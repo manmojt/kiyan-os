@@ -1,6 +1,5 @@
 # Signing material is never committed.
 /cosign.key
-/.cosign-password
 *.private
 *.key
 
