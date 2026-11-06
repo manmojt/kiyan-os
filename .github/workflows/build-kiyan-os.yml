@@ -122,7 +122,10 @@ jobs:
             -E '^(ID|ID_LIKE|VERSION_ID)=' /usr/lib/os-release
 
           mkdir -p output
-          sudo podman run --rm --privileged --security-opt label=type:unconfined_t \
+          sudo podman run --rm --privileged \
+            --security-opt seccomp=unconfined \
+            --security-opt apparmor=unconfined \
+            --security-opt label=type:unconfined_t \
             --network host \
             --volume /var/lib/containers/storage:/var/lib/containers/storage \
             --volume "$GITHUB_WORKSPACE/output:/output" \
