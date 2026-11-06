@@ -104,13 +104,16 @@ jobs:
 
           mkdir -p output
           sudo podman run --rm --privileged --security-opt label=type:unconfined_t \
+            --network host \
             --volume /var/lib/containers/storage:/var/lib/containers/storage \
             --volume "$GITHUB_WORKSPACE/output:/output" \
             --volume "$GITHUB_WORKSPACE/iso-config.toml:/config.toml:ro" \
+            --volume "$GITHUB_WORKSPACE/files/iso-repos:/iso-repos:ro" \
             "$builder_image" build \
               --output /output \
               --rootfs ext4 \
               --config /config.toml \
+              --force-repo-dir /iso-repos \
               --use-librepo=True \
               --type anaconda-iso \
               localhost/kiyan-os:iso-builder
