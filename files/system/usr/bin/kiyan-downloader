@@ -19,8 +19,16 @@ def main():
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30)
         media = sniff.returncode == 0
     if media:
-        subprocess.Popen(["yt-dlp", "--no-playlist", "--", url], cwd=dest, start_new_session=True)
+        command = ["yt-dlp", "--no-playlist", "--output", str(pathlib.Path(dest) / "%(title)s.%(ext)s")]
+        # yt-dlp delegates segmented media downloads to aria2 when available.
+        # Fall back to yt-dlp's native downloader on images without aria2.
+        if shutil.which("aria2c"):
+            command += ["--downloader", "aria2c", "--downloader-args",
+                        "aria2c:-c -x 32 -s 32 -k 1M"]
+        subprocess.Popen(command + ["--", url], start_new_session=True)
     else:
+        if not shutil.which("aria2c"):
+            raise RuntimeError("aria2c is required for file downloads")
         subprocess.Popen(["aria2c", "--continue=true", "--max-connection-per-server=32",
                           "--split=32", "--min-split-size=1M", "--max-concurrent-downloads=5",
                           "--dir", dest, "--", url], start_new_session=True)
