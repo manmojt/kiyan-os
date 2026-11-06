@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Kiyan Switcher
+Name[fa]=تعویض‌گر کیان
+Comment=Switch desktop personas and color modes
+Exec=kiyan-switcher choose
+Icon=preferences-desktop-theme-global
+Terminal=false
+Categories=Settings;DesktopSettings;

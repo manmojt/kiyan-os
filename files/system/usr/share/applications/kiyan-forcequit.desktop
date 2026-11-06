@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Kiyan Force Quit
+Name[fa]=بستن اجباری برنامه
+Comment=Kill, freeze, or resume an unresponsive application
+Exec=kiyan-forcequit
+Icon=process-stop
+Terminal=false
+Categories=System;Monitor;
+X-KDE-Shortcuts=Meta+Alt+Esc

@@ -26,6 +26,7 @@ modules:
         - fprintd-pam
         - glibc-langpack-en
         - glibc-langpack-fa
+        - gwenview
         - grub2-common
         - grub2-efi-x64-cdboot
         - grub2-pc-modules
@@ -36,18 +37,23 @@ modules:
         - librsvg2-tools
         - linux-firmware
         - mpv
+        - okular
         - openssl
         - p7zip
         - podman
         - plymouth
         - plymouth-plugin-script
         - python3
+        - python3-pillow
+        - kdialog
         - qrencode
         - shim-x64
         - squashfs-tools
         - unrar
+        - ydotool
         - xorriso
         - yt-dlp
+        - wl-clipboard
 
     # Bazzite already ships terra-ddcutil, which provides ddcutil. Installing
     # Fedora's conflicting ddcutil package would break the base image package set.
@@ -80,6 +86,12 @@ modules:
     system:
       enabled:
         - kiyan-touchpad-watchdog.timer
+        - ydotool.service
+    user:
+      enabled:
+        - kiyan-accent-sync.timer
+        - kiyan-purepaste.service
+        - kiyan-quicklook-shortcut.service
 
   - type: signing
 

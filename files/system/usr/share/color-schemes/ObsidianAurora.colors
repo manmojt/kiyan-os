@@ -1,0 +1,22 @@
+[General]
+Name=Obsidian Aurora
+ColorScheme=ObsidianAurora
+[Colors:Window]
+BackgroundNormal=11,15,26
+BackgroundAlternate=18,24,40
+ForegroundNormal=226,232,240
+ForegroundInactive=148,163,184
+[Colors:View]
+BackgroundNormal=11,15,26
+BackgroundAlternate=18,24,40
+ForegroundNormal=226,232,240
+ForegroundInactive=148,163,184
+[Colors:Button]
+BackgroundNormal=24,32,50
+ForegroundNormal=226,232,240
+[Colors:Selection]
+BackgroundNormal=64,224,208
+ForegroundNormal=11,15,26
+[Colors:Tooltip]
+BackgroundNormal=18,24,40
+ForegroundNormal=226,232,240

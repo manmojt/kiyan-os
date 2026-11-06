@@ -1,0 +1,86 @@
+#!/usr/bin/python3
+"""Switch Plasma 6 desktop personas and Kiyan color modes with one-step undo."""
+import argparse
+import pathlib
+import sys
+sys.path.insert(0, "/usr/lib/kiyan")
+from desktop import error, have, notify, run, snapshot, reload_plasma, undo_snapshot, apply_plasma_layout
+from personas import PERSONAS, ACCENT
+
+
+def set_value(file, group, key, value):
+    run(["kwriteconfig6", "--file", file, "--group", group, "--key", key, str(value)])
+
+
+def apply_persona(name):
+    if not have("plasma-apply-lookandfeel") or not have("kwriteconfig6"):
+        raise RuntimeError("This operation requires KDE Plasma 6 (plasma-apply-lookandfeel and kwriteconfig6)")
+    profile = PERSONAS[name]
+    snapshot()
+    run(["plasma-apply-lookandfeel", "--apply", profile["lookandfeel"]])
+    for group, values in profile["kwin"].items():
+        for key, value in values.items():
+            set_value("kwinrc", group, key, value)
+    if name == "linux-pro":
+        set_value("kwinrc", "Script-kiyan-krohnkite", "Enabled", "true")
+    for group, values in profile["shortcuts"].items():
+        for key, value in values.items():
+            set_value("kglobalshortcutsrc", group, key, value)
+    layout = pathlib.Path("/usr/share/plasma/look-and-feel") / profile["lookandfeel"] / "contents/layouts/org.kde.plasma.desktop-layout.js"
+    apply_plasma_layout(layout)
+    set_value("kdeglobals", "General", "AccentColor", ACCENT)
+    reload_plasma()
+    notify("Kiyan Switcher", f"{profile['name']} applied. {profile['notes']}")
+
+
+def apply_color(name):
+    if not have("kwriteconfig6"):
+        raise RuntimeError("kwriteconfig6 is required")
+    snapshot()
+    if name == "obsidian":
+        scheme, window, view = "ObsidianAurora", "11,15,26", "11,15,26"
+    else:
+        scheme, window, view = "CrystalLight", "239,244,248", "255,255,255"
+    set_value("kdeglobals", "General", "ColorScheme", scheme)
+    set_value("kdeglobals", "General", "AccentColor", ACCENT)
+    set_value("kdeglobals", "Colors:Window", "BackgroundNormal", window)
+    set_value("kdeglobals", "Colors:View", "BackgroundNormal", view)
+    reload_plasma()
+    notify("Kiyan Switcher", f"{name.title()} color mode applied with Persian Turquoise accent")
+
+
+def choose():
+    if not have("kdialog"):
+        raise RuntimeError("Install kdialog to open the chooser")
+    result = run(["kdialog", "--title", "Kiyan Switcher", "--menu", "Choose a desktop mode",
+                  "macos", "macOS Mode", "windows11", "Windows 11 Mode", "linux-pro", "Linux Pro Mode",
+                  "obsidian", "Obsidian Aurora Dark", "crystal", "Crystal Light", "undo", "Undo Last Change"],
+                 check=False, capture=True)
+    choice = result.stdout.strip()
+    if result.returncode:
+        return
+    if choice in PERSONAS:
+        apply_persona(choice)
+    elif choice in ("obsidian", "crystal"):
+        apply_color(choice)
+    elif choice == "undo":
+        undo_snapshot(); notify("Kiyan Switcher", "Last change restored")
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    sub = parser.add_subparsers(dest="action", required=True)
+    p = sub.add_parser("persona"); p.add_argument("name", choices=PERSONAS)
+    c = sub.add_parser("color"); c.add_argument("name", choices=("obsidian", "crystal"))
+    sub.add_parser("undo"); sub.add_parser("choose")
+    args = parser.parse_args()
+    if args.action == "persona": apply_persona(args.name)
+    elif args.action == "color": apply_color(args.name)
+    elif args.action == "undo": undo_snapshot(); notify("Kiyan Switcher", "Last change restored")
+    else: choose()
+    return 0
+
+if __name__ == "__main__":
+    try: raise SystemExit(main())
+    except Exception as exc:
+        error("Kiyan Switcher", str(exc)); raise SystemExit(1)

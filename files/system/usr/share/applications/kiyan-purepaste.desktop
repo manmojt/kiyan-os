@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Kiyan Purepaste
+Name[fa]=چسباندن پاک
+Comment=Clean rich text and tracking parameters from the clipboard
+Exec=kiyan-purepaste
+Icon=edit-paste
+Terminal=false
+Categories=Utility;TextTools;
+X-KDE-Shortcuts=Meta+Alt+V

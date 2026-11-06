@@ -1,0 +1,11 @@
+{
+  "KPackageStructure": "Plasma/LookAndFeel",
+  "KPlugin": {
+    "Id": "org.kiyan.linuxpro",
+    "Name": "Kiyan Linux Pro Mode",
+    "Description": "Kiyan OS desktop persona defaults",
+    "Version": "1.0",
+    "License": "GPL-3.0-or-later",
+    "EnabledByDefault": true
+  }
+}

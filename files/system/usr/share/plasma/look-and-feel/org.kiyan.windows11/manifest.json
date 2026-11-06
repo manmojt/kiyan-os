@@ -1,0 +1,11 @@
+{
+  "KPackageStructure": "Plasma/LookAndFeel",
+  "KPlugin": {
+    "Id": "org.kiyan.windows11",
+    "Name": "Kiyan Windows 11 Mode",
+    "Description": "Kiyan OS desktop persona defaults",
+    "Version": "1.0",
+    "License": "GPL-3.0-or-later",
+    "EnabledByDefault": true
+  }
+}

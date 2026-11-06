@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Kiyan Settings Hub
+Name[fa]=مرکز تنظیمات کیان
+Comment=Open common Kiyan desktop settings
+Exec=kiyan-settings-hub
+Icon=preferences-system
+Terminal=false
+Categories=Settings;DesktopSettings;
