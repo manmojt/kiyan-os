@@ -124,61 +124,32 @@ jobs:
         run: |
           "$COSIGN_BIN/cosign" verify --key cosign.pub ghcr.io/manmojt/kiyan-os:latest
 
-      - name: Build Fedora-aware installer input and Anaconda ISO
+      - name: Build Anaconda ISO with the published bootc image
         id: build-anaconda-iso
         run: |
           set -euo pipefail
-          # Use the upstream source-built BIB image, which includes Fedora 45 repo data.
-          builder_image=ghcr.io/osbuild/bootc-image-builder@sha256:c97a53170d2abac6e469c2cd7f5636ff19af74ab2c8b1995cce50c5a2bd70e3e
           source_image=ghcr.io/manmojt/kiyan-os:latest
+          installer_iso="$RUNNER_TEMP/Fedora-Server-dvd-x86_64-44-1.7.iso"
+          kickstart="$RUNNER_TEMP/kiyan-bootc.ks"
+          iso_output="$GITHUB_WORKSPACE/output/Kiyan-OS-LB1-x86_64.iso"
+          curl --fail --location --retry 3 \
+            --output "$installer_iso" \
+            https://download.fedoraproject.org/pub/fedora/linux/releases/44/Server/x86_64/iso/Fedora-Server-dvd-x86_64-44-1.7.iso
 
-          sudo podman pull "$builder_image"
-          sudo podman pull "$source_image"
-
-          # BIB resolves its installer RPM repositories from ID= and
-          # VERSION_ID=. Build a runner-local copy with Fedora 45 metadata so
-          # installer RPMs come from the matching Fedora release. The kickstart
-          # below switches the installed system back to the published image.
-          iso_context="$RUNNER_TEMP/kiyan-iso-builder"
-          mkdir -p "$iso_context"
-          cat > "$iso_context/Containerfile" <<'EOF'
-          FROM ghcr.io/manmojt/kiyan-os:latest
-          RUN set -eux; \
-              if [ -f /etc/os-release ] && [ ! -L /etc/os-release ]; then \
-                sed -i -E 's/^ID="?kiyan"?$/ID=fedora/' /etc/os-release; \
-              fi; \
-              sed -i -E 's/^ID="?kiyan"?$/ID=fedora/' /usr/lib/os-release; \
-              sed -i -E 's/^VERSION_ID="?[0-9]+"?$/VERSION_ID=45/' /etc/os-release /usr/lib/os-release; \
-              grep -qx 'ID=fedora' /etc/os-release; \
-              grep -qx 'ID=fedora' /usr/lib/os-release; \
-              grep -qx 'VERSION_ID=45' /etc/os-release; \
-              grep -qx 'VERSION_ID=45' /usr/lib/os-release
+          cat > "$kickstart" <<EOF
+          # Install the verified published Kiyan OS bootc image.
+          ostreecontainer --url $source_image --no-signature-verification
           EOF
-          sudo podman build --tag localhost/kiyan-os:iso-builder "$iso_context"
-          sudo podman run --rm --entrypoint /usr/bin/grep localhost/kiyan-os:iso-builder \
-            -E '^(ID|ID_LIKE|VERSION_ID)=' /usr/lib/os-release
-
           mkdir -p output
-          sudo podman run --rm --privileged \
-            --security-opt seccomp=unconfined \
-            --security-opt apparmor=unconfined \
-            --security-opt label=type:unconfined_t \
-            --network host \
-            --volume /var/lib/containers/storage:/var/lib/containers/storage \
+          sudo podman run --rm --security-opt label=disable \
+            --volume "$RUNNER_TEMP:/work:ro" \
             --volume "$GITHUB_WORKSPACE/output:/output" \
-            --volume "$GITHUB_WORKSPACE/iso-config.toml:/config.toml:ro" \
-            "$builder_image" build \
-              --output /output \
-              --rootfs ext4 \
-              --config /config.toml \
-              --use-librepo=True \
-              --type anaconda-iso \
-              localhost/kiyan-os:iso-builder
+            registry.fedoraproject.org/fedora:44 \
+            bash -euc 'dnf install --assumeyes lorax && mkksiso --ks /work/kiyan-bootc.ks /work/Fedora-Server-dvd-x86_64-44-1.7.iso /output/Kiyan-OS-LB1-x86_64.iso'
 
           sudo chown -R "$(id -u):$(id -g)" output
-          iso_path="$(find "$GITHUB_WORKSPACE/output" -type f -name '*.iso' -print -quit)"
-          test -n "$iso_path"
-          echo "anaconda-iso-output-path=$iso_path" >> "$GITHUB_OUTPUT"
+          test -s "$iso_output"
+          echo "anaconda-iso-output-path=$iso_output" >> "$GITHUB_OUTPUT"
 
       - name: Validate ISO boot entries and signed UEFI shim
         env:
