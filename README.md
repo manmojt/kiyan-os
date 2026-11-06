@@ -6,7 +6,7 @@ Kiyan OS is a BlueBuild-derived, bootc-based KDE image. Phase 1 publishes the OC
 
 - Base: `ghcr.io/ublue-os/bazzite:stable` (Bazzite's KDE image; the old `bazzite-kde` name is not used).
 - Image updates: switch to `ghcr.io/manmojt/kiyan-os:latest` with `bootc switch`. BlueBuild rechunking is enabled to help reduce repeat downloads; it does not guarantee byte-level delta updates for every change.
-- ISO: built from the published bootc image with osbuild's current `generic-iso` target. Fedora's signed shim and GRUB EFI packages are included for UEFI Secure Boot, plus the x86 GRUB BIOS modules for legacy BIOS boot. Secure Boot only applies to UEFI; the generated ISO still needs a successful CI bootability inspection before calling both paths verified.
+- ISO: built from the published bootc image with osbuild Bootc Image Builder's Anaconda ISO target. Fedora's signed shim and GRUB EFI packages are included for UEFI Secure Boot, plus x86 GRUB BIOS support. CI inspects the El Torito boot entries and verifies the embedded UEFI shim before publishing; Secure Boot applies to UEFI only.
 - Updates to the VPS: Actions publishes a versioned release. A local systemd timer on the VPS polls the public release, downloads its split ISO assets, verifies the SHA-256 and Cosign Sigstore bundle, then replaces `/home/ubuntu/mac_shared/Kiyan-OS-LB1-x86_64.iso`.
 
 ## Signing keys

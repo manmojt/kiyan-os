@@ -15,7 +15,7 @@ EOF
 # The image-builder generic ISO boots a live squashfs root.
 cat > /etc/dracut.conf.d/40-kiyan-live.conf <<'EOF'
 compress="xz"
-add_dracutmodules+=" qemu qemu-net livenet dmsquash-live "
+add_dracutmodules+=" qemu qemu-net livenet dmsquash-live dmsquash-live-autooverlay "
 early_microcode="no"
 EOF
 
@@ -44,21 +44,25 @@ if (( ${#gcd_candidates[@]} != 1 )) || [[ ! -f "${gcd_candidates[0]}" ]]; then
 fi
 install -m 0644 "${gcd_candidates[0]}" "/boot/efi/EFI/${vendor}/gcdx64.efi"
 
-# Define the generic ISO's label and GRUB menu without a serial console entry.
-install -d -m 0755 /usr/lib/image-builder/bootc
-cat > /usr/lib/image-builder/bootc/iso.yaml <<'EOF'
+# Define the container-native live ISO label and GRUB entries.
+install -d -m 0755 /usr/lib/bootc-image-builder
+cat > /usr/lib/bootc-image-builder/iso.yaml <<'EOF'
 label: "KIYAN_OS_LB1"
-kernel_args:
-  - quiet
-  - splash
-  - loglevel=3
 grub2:
   timeout: 5
   entries:
-    - name: "Kiyan OS (Live)"
-      linux: "${kernelpath} ${root}"
-      initrd: "${initrdpath}"
+    - name: "Kiyan OS LB1 (Live)"
+      linux: "/images/pxeboot/vmlinuz quiet splash loglevel=3 root=live:CDLABEL=KIYAN_OS_LB1 enforcing=0 rd.live.image"
+      initrd: "/images/pxeboot/initrd.img"
+    - name: "Kiyan OS LB1 (Basic Graphics)"
+      linux: "/images/pxeboot/vmlinuz quiet splash loglevel=3 root=live:CDLABEL=KIYAN_OS_LB1 enforcing=0 rd.live.image nomodeset"
+      initrd: "/images/pxeboot/initrd.img"
 EOF
+
+# Keep both Legacy BIOS GRUB assets and the signed UEFI shim inputs available
+# for hybrid ISO generators.
+test -s /usr/lib/grub/i386-pc/cdboot.img
+test -s /usr/lib/grub/i386-pc/boot_hybrid.img
 
 # Render the vector logo once during the image build, then select the theme.
 theme_dir=/usr/share/plymouth/themes/kiyan-lb1

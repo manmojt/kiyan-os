@@ -80,6 +80,7 @@ jobs:
           image: ghcr.io/manmojt/kiyan-os:latest
           types: anaconda-iso
           rootfs: ext4
+          additional-args: --use-librepo=True
 
       - name: Validate ISO boot entries and signed UEFI shim
         env:
