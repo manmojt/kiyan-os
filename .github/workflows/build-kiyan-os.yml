@@ -5,6 +5,12 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      build_image:
+        description: Rebuild and sign the OS image before building the ISO
+        required: true
+        default: true
+        type: boolean
 
 permissions:
   contents: read
@@ -15,7 +21,7 @@ concurrency:
 
 jobs:
   build-image:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.build_image)
     name: Build and sign OCI image
     runs-on: ubuntu-latest
     permissions:
@@ -43,7 +49,7 @@ jobs:
           maximize_build_space: true
 
   build-iso-and-publish:
-    if: github.ref == 'refs/heads/main'
+    if: ${{ always() && github.ref == 'refs/heads/main' && (needs['build-image'].result == 'success' || (github.event_name == 'workflow_dispatch' && inputs.build_image == false && needs['build-image'].result == 'skipped')) }}
     name: Build ISO and publish signed release
     needs: build-image
     runs-on: ubuntu-latest
@@ -70,6 +76,18 @@ jobs:
           sudo podman info >/dev/null
           echo "update DBConfig set GraphDriver = 'overlay' where GraphDriver = '';" \
             | sudo sh -c '(cd /var/lib/containers/storage && sqlite3 db.sql)'
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.1.4
+          install-dir: ${{ runner.temp }}/cosign-bin
+
+      - name: Verify signed source image
+        env:
+          COSIGN_BIN: ${{ runner.temp }}/cosign-bin
+        run: |
+          "$COSIGN_BIN/cosign" verify --key cosign.pub ghcr.io/manmojt/kiyan-os:latest
 
       - name: Build Fedora-aware installer input and Anaconda ISO
         id: build-anaconda-iso
@@ -108,12 +126,10 @@ jobs:
             --volume /var/lib/containers/storage:/var/lib/containers/storage \
             --volume "$GITHUB_WORKSPACE/output:/output" \
             --volume "$GITHUB_WORKSPACE/iso-config.toml:/config.toml:ro" \
-            --volume "$GITHUB_WORKSPACE/files/iso-repos:/iso-repos:ro" \
             "$builder_image" build \
               --output /output \
               --rootfs ext4 \
               --config /config.toml \
-              --force-repo-dir /iso-repos \
               --use-librepo=True \
               --type anaconda-iso \
               localhost/kiyan-os:iso-builder
@@ -143,12 +159,6 @@ jobs:
             -extract /EFI/BOOT/BOOTX64.EFI output/BOOTX64.EFI
           test -s output/BOOTX64.EFI
           sbverify --list output/BOOTX64.EFI
-
-      - name: Install Cosign
-        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
-        with:
-          cosign-release: v3.1.4
-          install-dir: ${{ runner.temp }}/cosign-bin
 
       - name: Sign ISO and split it into GitHub Release-sized assets
         env:
