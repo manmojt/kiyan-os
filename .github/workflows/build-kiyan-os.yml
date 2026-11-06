@@ -134,7 +134,7 @@ jobs:
           iso_output="$GITHUB_WORKSPACE/output/Kiyan-OS-LB1-x86_64.iso"
           curl --fail --location --retry 3 \
             --output "$installer_iso" \
-            https://download.fedoraproject.org/pub/fedora/linux/releases/44/Server/x86_64/iso/Fedora-Server-dvd-x86_64-44-1.7.iso
+            https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Server/x86_64/iso/Fedora-Server-dvd-x86_64-44-1.7.iso
 
           cat > "$kickstart" <<EOF
           # Install the verified published Kiyan OS bootc image.
