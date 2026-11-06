@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kiyan Browser</title>
+<style>
+body{font:16px system-ui;background:#111827;color:#f3f4f6;max-width:900px;margin:8vh auto;padding:24px}form{display:flex;gap:8px}input{flex:1;padding:14px;border-radius:10px;border:1px solid #64748b;background:#1f2937;color:white}button,a{padding:12px;border-radius:10px;background:#27364b;color:white;text-decoration:none}.grid{display:flex;flex-wrap:wrap;gap:12px;margin-top:24px}.tile{min-width:140px}.pill{display:none;color:#d9f99d;margin-top:22px}.note{color:#aab6c8;font-size:13px}
+</style>
+<h1>Kiyan Browser</h1>
+<form id="search"><input id="q" aria-label="Search" placeholder="Search the web"><button>Search</button></form>
+<div class="grid" id="tiles"><a class="tile" href="https://flathub.org">Flathub</a><a class="tile" href="https://kde.org">KDE</a></div>
+<a id="shopping" class="pill" rel="noopener noreferrer">Smart shopping offer · Sponsored</a>
+<p class="note">Sponsored tiles are labeled. No cookies are written by this page. Configure optional feed sync in ~/.config/kiyan/browser.json.</p>
+<script>
+const cfgPath='file:///home/';
+document.querySelector('#search').addEventListener('submit',e=>{e.preventDefault();location.href='https://www.google.com/search?q='+encodeURIComponent(document.querySelector('#q').value)});
+fetch('file:///home/').catch(()=>{});
+</script>
+</html>

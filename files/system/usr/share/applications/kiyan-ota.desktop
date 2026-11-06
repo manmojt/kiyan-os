@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Kiyan OS Update
+Name[fa]=به‌روزرسانی کیان
+Comment=Update or roll back Kiyan OS
+Exec=kiyan-ota
+Icon=system-software-update
+Terminal=false
+Categories=System;

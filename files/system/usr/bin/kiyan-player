@@ -1,0 +1,33 @@
+#!/usr/bin/python3
+"""mpv launcher with Persian/English subtitles, night audio and studio EQ."""
+import pathlib, shutil, subprocess, sys
+
+def repair_subtitle(path):
+    try:
+        data = path.read_bytes()
+        data.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        try:
+            text = data.decode("cp1256")
+            fixed = path.with_name(path.stem + ".kiyan-utf8" + path.suffix)
+            fixed.write_text(text, encoding="utf-8")
+            return fixed
+        except UnicodeError: pass
+    return path
+
+def main():
+    files = [pathlib.Path(p) for p in sys.argv[1:] if pathlib.Path(p).is_file()]
+    if not files:
+        pick = subprocess.run(["kdialog", "--getopenfilename", str(pathlib.Path.home()), "*|Media files"], text=True, capture_output=True)
+        if pick.returncode: return 0
+        files = [pathlib.Path(pick.stdout.strip())]
+    subs = sorted(files[0].parent.glob(files[0].stem + ".*.srt"))
+    fa = next((p for p in subs if any(t in p.stem.lower() for t in ("fa", "per", "فار"))), None)
+    en = next((p for p in subs if "en" in p.stem.lower()), None)
+    args = ["mpv", "--vo=gpu-next", "--gpu-api=vulkan", "--hwdec=auto-safe",
+            "--af=dynaudnorm=f=500:g=9.5:p=0.95,lavfi=[equalizer=f=60:t=q:w=1:g=2,equalizer=f=120:t=q:w=1:g=2,equalizer=f=250:t=q:w=1:g=1,equalizer=f=500:t=q:w=1:g=0,equalizer=f=1000:t=q:w=1:g=0,equalizer=f=2000:t=q:w=1:g=1,equalizer=f=4000:t=q:w=1:g=2,equalizer=f=8000:t=q:w=1:g=2,equalizer=f=12000:t=q:w=1:g=1,equalizer=f=16000:t=q:w=1:g=0]"]
+    if fa: args += [f"--sub-file={repair_subtitle(fa)}"]
+    if en: args += [f"--external-file={repair_subtitle(en)}", "--secondary-sid=auto"]
+    args += [str(p) for p in files]
+    return subprocess.call(args)
+if __name__ == "__main__": raise SystemExit(main())

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Kiyan Downloader
+Name[fa]=دانلودگر کیان
+Comment=Download files and online media
+Exec=kiyan-downloader
+Icon=download
+Terminal=false
+Categories=Network;FileTransfer;

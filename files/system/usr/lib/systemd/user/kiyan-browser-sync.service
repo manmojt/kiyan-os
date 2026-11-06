@@ -1,0 +1,6 @@
+[Unit]
+Description=Sync opted-in Kiyan browser speed-dial offers
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/kiyan-browser-sync

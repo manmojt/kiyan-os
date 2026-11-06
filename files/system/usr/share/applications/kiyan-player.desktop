@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Kiyan Player
+Name[fa]=پخش‌کننده کیان
+Comment=Play video with dual subtitles and night audio
+Exec=kiyan-player %F
+Icon=mpv
+Terminal=false
+Categories=AudioVideo;Player;
+MimeType=video/mp4;video/mpeg;video/x-matroska;audio/mpeg;audio/flac;audio/ogg;

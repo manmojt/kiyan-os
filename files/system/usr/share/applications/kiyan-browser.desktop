@@ -1,0 +1,16 @@
+[Desktop Entry]
+Type=Application
+Name=Kiyan Browser
+Name[fa]=مرورگر کیان
+Comment=Browse with Firefox privacy protections
+Exec=kiyan-browser
+Icon=firefox
+Terminal=false
+Categories=Network;WebBrowser;
+Actions=privacy;
+
+[Desktop Action privacy]
+Name=Smart Shopping Privacy Settings
+Name[fa]=تنظیمات حریم خصوصی خرید هوشمند
+Exec=kiyan-browser --settings
+Icon=preferences-system-privacy

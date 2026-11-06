@@ -1,0 +1,26 @@
+#!/usr/bin/python3
+"""Stage atomic bootc/rpm-ostree updates and expose deployment rollback."""
+import shutil, subprocess, sys
+def main():
+    action = sys.argv[1] if len(sys.argv) > 1 else "menu"
+    if action == "menu":
+        p = subprocess.run(["kdialog", "--menu", "Kiyan OS Updates", "status", "Show deployment status", "check", "Check and stage update", "rollback", "Restore previous deployment", "boots", "Choose boot deployment"], text=True, capture_output=True)
+        if p.returncode: return 0
+        return subprocess.call(["kiyan-ota", p.stdout.strip()])
+    if action == "status": return subprocess.call(["rpm-ostree", "status"])
+    if action == "check":
+        if subprocess.run(["kdialog", "--yesno", "Stage the latest OS update? The current deployment remains available for rollback." ]).returncode: return 0
+        backend = ["bootc", "upgrade"] if shutil.which("bootc") else ["rpm-ostree", "upgrade"]
+        result = subprocess.call(["pkexec", *backend])
+        if result == 0: subprocess.run(["kdialog", "--msgbox", "Update staged. Restart to boot the new deployment."])
+        return result
+    if action == "rollback":
+        if subprocess.run(["kdialog", "--yesno", "Switch to the previous OS deployment? This takes effect after restart." ]).returncode: return 0
+        backend = ["bootc", "rollback"] if shutil.which("bootc") else ["rpm-ostree", "rollback"]
+        return subprocess.call(["pkexec", *backend])
+    if action == "boots": return subprocess.call(["kiyan-timemachine"])
+    raise RuntimeError("Usage: kiyan-ota [status|check|rollback|boots]")
+if __name__ == "__main__":
+    try: raise SystemExit(main())
+    except Exception as exc:
+        subprocess.run(["kdialog", "--error", str(exc)]); raise SystemExit(1)

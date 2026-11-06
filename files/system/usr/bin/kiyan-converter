@@ -1,0 +1,34 @@
+#!/usr/bin/python3
+"""Offline conversion front end for ffmpeg and heif-convert."""
+import pathlib, shutil, subprocess, sys
+
+def dialog(*args): return subprocess.run(["kdialog", *args], text=True, capture_output=True)
+def main():
+    if len(sys.argv) > 1:
+        sources = [pathlib.Path(p) for p in sys.argv[1:]]
+    else:
+        picked = dialog("--getopenfilename", str(pathlib.Path.home()), "*|All files")
+        if picked.returncode: return 0
+        sources = [pathlib.Path(picked.stdout.strip())]
+    mode = dialog("--title", "Kiyan Converter", "--menu", "Choose output format",
+                  "mp4", "Video (H.264/MP4)", "mp3", "Audio (MP3)", "pdf", "Document (PDF)",
+                  "jpg", "Image (JPEG)")
+    if mode.returncode: return 0
+    fmt = mode.stdout.strip()
+    for src in sources:
+        if not src.is_file(): continue
+        dest = src.with_suffix("." + fmt)
+        if fmt == "jpg" and src.suffix.lower() in (".heic", ".heif") and shutil.which("heif-convert"):
+            cmd = ["heif-convert", str(src), str(dest)]
+        elif fmt == "pdf" and shutil.which("libreoffice"):
+            cmd = ["libreoffice", "--headless", "--convert-to", "pdf", "--outdir", str(src.parent), str(src)]
+        else:
+            cmd = ["ffmpeg", "-nostdin", "-y", "-i", str(src), str(dest)]
+        result = subprocess.run(cmd, check=False)
+        if result.returncode: raise RuntimeError(f"Conversion failed for {src.name}")
+    dialog("--msgbox", "Conversion finished.")
+    return 0
+if __name__ == "__main__":
+    try: raise SystemExit(main())
+    except Exception as exc:
+        subprocess.run(["kdialog", "--error", str(exc)], check=False); raise SystemExit(1)

@@ -1,0 +1,40 @@
+#!/usr/bin/python3
+"""Launch Firefox with the local Kiyan speed dial."""
+import html, json, pathlib, shutil, subprocess, sys
+DEFAULT = {"smart_shopping_opt_in": False, "feed_url": "https://92.5.113.35/kiyan/v1/tiles.json", "search_url": ""}
+def settings(cfg_file):
+    cfg_file.parent.mkdir(parents=True, exist_ok=True)
+    cfg = dict(DEFAULT)
+    if cfg_file.exists(): cfg.update(json.loads(cfg_file.read_text()))
+    result = subprocess.run(["kdialog", "--yesno", "Enable the optional Smart Shopping Pill? This syncs a small sponsored tiles feed from the configured Kiyan HTTPS server every 24 hours. You can turn it off here at any time." if not cfg.get("smart_shopping_opt_in") else "Disable Smart Shopping? This stops future feed syncs." ])
+    if result.returncode in (0, 1): cfg["smart_shopping_opt_in"] = (result.returncode == 0)
+    cfg_file.write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8")
+    return 0
+def main():
+    browser = shutil.which("firefox") or shutil.which("firefox-wayland")
+    if not browser: raise RuntimeError("Firefox is not installed")
+    home = pathlib.Path.home()
+    cfg_file = home / ".config/kiyan/browser.json"
+    cfg_file.parent.mkdir(parents=True, exist_ok=True)
+    cfg = dict(DEFAULT)
+    if cfg_file.exists(): cfg.update(json.loads(cfg_file.read_text()))
+    if len(sys.argv) > 1 and sys.argv[1] == "--settings": return settings(cfg_file)
+    if cfg.get("search_url") and not cfg["search_url"].startswith("https://"):
+        raise RuntimeError("Search partner endpoint must use HTTPS")
+    feed_file = home / ".cache/kiyan/browser/feed.json"
+    feed = json.loads(feed_file.read_text()) if feed_file.exists() and cfg.get("smart_shopping_opt_in") else {"tiles": []}
+    tiles = ['<a class="tile" href="https://flathub.org">Flathub</a>', '<a class="tile" href="https://kde.org">KDE</a>']
+    tiles.extend(f'<a class="tile" rel="sponsored noopener noreferrer" href="{html.escape(t["url"], quote=True)}">{html.escape(t["title"])} · Sponsored</a>' for t in feed.get("tiles", []))
+    search = cfg.get("search_url") or "https://www.google.com/search"
+    shopping = feed.get("smart_shopping") if cfg.get("smart_shopping_opt_in") else None
+    pill = f'<a class="pill" rel="sponsored noopener noreferrer" href="{html.escape(shopping["url"], quote=True)}">{html.escape(shopping["title"])} · Sponsored</a>' if isinstance(shopping, dict) and shopping.get("url", "").startswith("https://") else ""
+    search_url = html.escape(search, quote=True)
+    body = """<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Kiyan Browser</title><style>body{font:16px system-ui;background:#111827;color:#f3f4f6;max-width:900px;margin:8vh auto;padding:24px}form{display:flex;gap:8px}input{flex:1;padding:14px;border-radius:10px;border:1px solid #64748b;background:#1f2937;color:white}button,.tile,.pill{padding:12px;border-radius:10px;background:#27364b;color:white;text-decoration:none}.grid{display:flex;flex-wrap:wrap;gap:12px;margin-top:24px}.tile{min-width:140px}.pill{display:inline-block;color:#d9f99d;margin-top:22px}.note{color:#aab6c8;font-size:13px}</style><h1>Kiyan Browser</h1><form action="SEARCH"><input name="q" aria-label="Search" placeholder="Search the web"><button>Search</button></form><div class="grid">TILES</div>PILL<p class="note">Sponsored links are labeled. This page does not set cookies. Smart shopping feed sync is optional and can be disabled in ~/.config/kiyan/browser.json.</p></html>""".replace("SEARCH", search_url).replace("TILES", "".join(tiles)).replace("PILL", pill)
+    page_path = home / ".cache/kiyan/browser/newtab.html"
+    page_path.parent.mkdir(parents=True, exist_ok=True); page_path.write_text(body, encoding="utf-8")
+    page = page_path.as_uri()
+    return subprocess.call([browser, "--new-window", page])
+if __name__ == "__main__":
+    try: raise SystemExit(main())
+    except Exception as e:
+        subprocess.run(["kdialog", "--error", str(e)]); raise SystemExit(1)

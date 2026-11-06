@@ -24,6 +24,7 @@ modules:
         - ffmpeg
         - fprintd
         - fprintd-pam
+        - firefox
         - glibc-langpack-en
         - glibc-langpack-fa
         - gwenview
@@ -34,6 +35,7 @@ modules:
         - hostapd
         - isomd5sum
         - libheif-tools
+        - libreoffice-headless
         - librsvg2-tools
         - linux-firmware
         - mpv
@@ -117,6 +119,7 @@ modules:
         - kiyan-accent-sync.timer
         - kiyan-purepaste.service
         - kiyan-quicklook-shortcut.service
+        - kiyan-browser-sync.timer
 
   - type: signing
 

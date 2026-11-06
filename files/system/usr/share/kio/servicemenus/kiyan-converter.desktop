@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Service
+Name=Kiyan Converter
+MimeType=video/*;audio/*;image/*;application/pdf;text/plain;
+Actions=kiyanConvert;
+X-KDE-Priority=TopLevel
+
+[Desktop Action kiyanConvert]
+Name=Convert with Kiyan
+Name[fa]=تبدیل با کیان
+Icon=convert
+Exec=kiyan-converter %F
