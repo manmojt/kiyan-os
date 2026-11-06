@@ -100,7 +100,7 @@ jobs:
       - name: Install ISO signature inspection tool
         run: |
           sudo apt-get update
-          sudo apt-get install --yes sbsigntool sqlite3 xorriso
+          sudo apt-get install --yes sbsigntool skopeo sqlite3 xorriso
 
       - name: Configure rootful Podman storage for image-builder
         run: |
@@ -119,16 +119,24 @@ jobs:
           install-dir: ${{ runner.temp }}/cosign-bin
 
       - name: Verify signed source image
+        id: verify-source-image
         env:
           COSIGN_BIN: ${{ runner.temp }}/cosign-bin
         run: |
-          "$COSIGN_BIN/cosign" verify --key cosign.pub ghcr.io/manmojt/kiyan-os:latest
+          set -euo pipefail
+          source_tag=docker://ghcr.io/manmojt/kiyan-os:latest
+          source_digest="$(skopeo inspect --format '{{.Digest}}' "$source_tag")"
+          source_image="ghcr.io/manmojt/kiyan-os@${source_digest}"
+          "$COSIGN_BIN/cosign" verify --key cosign.pub "$source_image"
+          echo "image_ref=$source_image" >> "$GITHUB_OUTPUT"
 
       - name: Build Anaconda ISO with the published bootc image
         id: build-anaconda-iso
+        env:
+          SOURCE_IMAGE: ${{ steps.verify-source-image.outputs.image_ref }}
         run: |
           set -euo pipefail
-          source_image=ghcr.io/manmojt/kiyan-os:latest
+          source_image="$SOURCE_IMAGE"
           installer_iso="$RUNNER_TEMP/Fedora-Server-dvd-x86_64-44-1.7.iso"
           kickstart="$RUNNER_TEMP/kiyan-bootc.ks"
           iso_output="$GITHUB_WORKSPACE/output/Kiyan-OS-LB1-x86_64.iso"
