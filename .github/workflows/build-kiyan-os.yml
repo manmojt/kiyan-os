@@ -93,7 +93,8 @@ jobs:
         id: build-anaconda-iso
         run: |
           set -euo pipefail
-          builder_image=quay.io/centos-bootc/bootc-image-builder@sha256:4d8a0d9d173a9f450ff42d70777e1e0a6681a68f5c0f5084b65222eceb1f4d05
+          # Use the upstream source-built BIB image, which includes Fedora 45 repo data.
+          builder_image=ghcr.io/osbuild/bootc-image-builder@sha256:c97a53170d2abac6e469c2cd7f5636ff19af74ab2c8b1995cce50c5a2bd70e3e
           source_image=ghcr.io/manmojt/kiyan-os:latest
 
           sudo podman pull "$builder_image"
