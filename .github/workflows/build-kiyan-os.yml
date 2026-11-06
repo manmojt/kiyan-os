@@ -16,12 +16,47 @@ permissions:
   contents: read
 
 concurrency:
-  group: kiyan-os-${{ github.ref }}
+  group: kiyan-os-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.build_image == false && 'iso-only' || 'full' }}
   cancel-in-progress: true
 
 jobs:
+  detect-changes:
+    name: Decide whether the OCI image needs rebuilding
+    runs-on: ubuntu-latest
+    outputs:
+      rebuild_image: ${{ steps.detect.outputs.rebuild_image }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Detect image inputs
+        id: detect
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+          REQUESTED_BUILD_IMAGE: ${{ inputs.build_image }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            echo "rebuild_image=$REQUESTED_BUILD_IMAGE" >> "$GITHUB_OUTPUT"
+          elif ! git cat-file -e "$BEFORE_SHA^{commit}" 2>/dev/null; then
+            echo "rebuild_image=true" >> "$GITHUB_OUTPUT"
+          else
+            changed_image_inputs="$(git diff --name-only "$BEFORE_SHA" "$HEAD_SHA" -- recipes/ files/ cosign.pub)"
+            if [[ -n "$changed_image_inputs" ]]; then
+              echo "rebuild_image=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "rebuild_image=false" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
   build-image:
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.build_image)
+    needs: detect-changes
+    if: github.ref == 'refs/heads/main' && needs['detect-changes'].outputs.rebuild_image == 'true'
     name: Build and sign OCI image
     runs-on: ubuntu-latest
     permissions:
@@ -49,9 +84,9 @@ jobs:
           maximize_build_space: true
 
   build-iso-and-publish:
-    if: ${{ always() && github.ref == 'refs/heads/main' && (needs['build-image'].result == 'success' || (github.event_name == 'workflow_dispatch' && inputs.build_image == false && needs['build-image'].result == 'skipped')) }}
+    if: ${{ always() && github.ref == 'refs/heads/main' && needs['detect-changes'].result == 'success' && (needs['build-image'].result == 'success' || (needs['build-image'].result == 'skipped' && needs['detect-changes'].outputs.rebuild_image == 'false')) }}
     name: Build ISO and publish signed release
-    needs: build-image
+    needs: [detect-changes, build-image]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -101,8 +136,8 @@ jobs:
           sudo podman pull "$source_image"
 
           # BIB resolves its installer RPM repositories from ID= and
-          # VERSION_ID=. Build a runner-local copy with Fedora 42 metadata so
-          # installer RPMs come from a stable Fedora release. The kickstart
+          # VERSION_ID=. Build a runner-local copy with Fedora 45 metadata so
+          # installer RPMs come from the matching Fedora release. The kickstart
           # below switches the installed system back to the published image.
           iso_context="$RUNNER_TEMP/kiyan-iso-builder"
           mkdir -p "$iso_context"
@@ -113,11 +148,11 @@ jobs:
                 sed -i -E 's/^ID="?kiyan"?$/ID=fedora/' /etc/os-release; \
               fi; \
               sed -i -E 's/^ID="?kiyan"?$/ID=fedora/' /usr/lib/os-release; \
-              sed -i -E 's/^VERSION_ID="?[0-9]+"?$/VERSION_ID=42/' /etc/os-release /usr/lib/os-release; \
+              sed -i -E 's/^VERSION_ID="?[0-9]+"?$/VERSION_ID=45/' /etc/os-release /usr/lib/os-release; \
               grep -qx 'ID=fedora' /etc/os-release; \
               grep -qx 'ID=fedora' /usr/lib/os-release; \
-              grep -qx 'VERSION_ID=42' /etc/os-release; \
-              grep -qx 'VERSION_ID=42' /usr/lib/os-release
+              grep -qx 'VERSION_ID=45' /etc/os-release; \
+              grep -qx 'VERSION_ID=45' /usr/lib/os-release
           EOF
           sudo podman build --tag localhost/kiyan-os:iso-builder "$iso_context"
           sudo podman run --rm --entrypoint /usr/bin/grep localhost/kiyan-os:iso-builder \
@@ -127,7 +162,7 @@ jobs:
           sudo podman run --rm --privileged \
             --security-opt seccomp=unconfined \
             --security-opt apparmor=unconfined \
-            --security-opt label=disable \
+            --security-opt label=type:unconfined_t \
             --network host \
             --volume /var/lib/containers/storage:/var/lib/containers/storage \
             --volume "$GITHUB_WORKSPACE/output:/output" \

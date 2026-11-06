@@ -19,7 +19,7 @@ The RSA-4096 Kiyan OS root CA is separate from the Cosign key. Its public certif
 
 ## Build and install
 
-The workflow runs on `push` to `main` and `workflow_dispatch`. Pushes always rebuild the image and ISO. For an ISO-only run using an already-built, signed `latest` image, dispatch with `build_image=false`, for example `gh workflow run build-kiyan-os.yml -f build_image=false`; the ISO job verifies the OCI signature before using that image. It uses x86_64 `ubuntu-latest` hosted runners for both image and ISO builds. The only Actions secret required for signing is `SIGNING_SECRET`; the workflow uses its scoped `GITHUB_TOKEN` for GHCR and release publication.
+The workflow runs on `push` to `main` and `workflow_dispatch`. Pushes that change `recipes/**`, `files/**`, or `cosign.pub` rebuild the image before the ISO; ISO-only, deploy, and documentation changes reuse the existing signed `latest` image. To choose manually, dispatch with `build_image=false`, for example `gh workflow run build-kiyan-os.yml -f build_image=false`; the ISO job verifies the OCI signature before using that image. It uses x86_64 `ubuntu-latest` hosted runners for both image and ISO builds. The only Actions secret required for signing is `SIGNING_SECRET`; the workflow uses its scoped `GITHUB_TOKEN` for GHCR and release publication.
 
 To install the VPS pull timer, run `sudo ./deploy/install-puller.sh` on the VPS. It installs a root-owned polling script and systemd service/timer that runs as `ubuntu`, reads public GitHub release assets, and writes only to `/home/ubuntu/mac_shared/`. The puller never executes downloaded ISO contents.
 
