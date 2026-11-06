@@ -107,6 +107,11 @@ modules:
         - kiyan-touchpad-watchdog.timer
         - kiyan-battery-pro.service
         - ydotool.service
+      # NetShare is intentionally on-demand: its desktop launcher invokes
+      # `systemctl start kiyan-netshare.service` only when sharing is wanted.
+      # Explicitly disabling it prevents a VPN hotspot from being started at boot.
+      disabled:
+        - kiyan-netshare.service
     user:
       enabled:
         - kiyan-accent-sync.timer
