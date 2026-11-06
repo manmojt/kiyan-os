@@ -6,12 +6,12 @@ Kiyan OS is a BlueBuild-derived, bootc-based KDE image. Phase 1 publishes the OC
 
 - Base: `ghcr.io/ublue-os/bazzite:stable` (Bazzite's KDE image; the old `bazzite-kde` name is not used).
 - Image updates: switch to `ghcr.io/manmojt/kiyan-os:latest` with `bootc switch`. BlueBuild rechunking is enabled to help reduce repeat downloads; it does not guarantee byte-level delta updates for every change.
-- ISO: built from the published bootc image with osbuild Bootc Image Builder's Anaconda ISO target. Fedora's signed shim and GRUB EFI packages are included for UEFI Secure Boot, plus x86 GRUB BIOS support. CI inspects the El Torito boot entries and verifies the embedded UEFI shim before publishing; Secure Boot applies to UEFI only.
+- ISO: built with osbuild Bootc Image Builder's Anaconda ISO target. Its runner-local input copy reports `ID=fedora` so BIB selects Fedora's RPM repositories; the install kickstart switches the installed system to the signed, public `ghcr.io/manmojt/kiyan-os:latest` image, whose identity remains `ID=kiyan`. Fedora's signed shim and GRUB EFI packages provide UEFI Secure Boot, plus x86 GRUB BIOS support. CI inspects the El Torito boot entries and the signed UEFI shim before publishing; Secure Boot applies to UEFI only.
 - Updates to the VPS: Actions publishes a versioned release. A local systemd timer on the VPS polls the public release, downloads its split ISO assets, verifies the SHA-256 and Cosign Sigstore bundle, then replaces `/home/ubuntu/mac_shared/Kiyan-OS-LB1-x86_64.iso`.
 
 ## Signing keys
 
-The Cosign image/ISO keypair is persistent. `cosign.pub` is public and committed. The unencrypted `cosign.key` stays local with mode `0600`, is excluded by `.gitignore`, and is stored as the GitHub Actions secret `SIGNING_SECRET`. The ISO is published with a Cosign Sigstore bundle and verified against the committed public key on the VPS.
+The Cosign image/ISO keypair is persistent. `cosign.pub` is public and committed. The passwordless `cosign.key` is a signing secret: its local copy has mode `0600`, is excluded by `.gitignore`, and its contents are stored as the GitHub Actions secret `SIGNING_SECRET`. The ISO is published with a Cosign Sigstore bundle and verified against the committed public key on the VPS.
 
 GitHub encrypts Actions secrets at rest, but the workflow can read a secret when it explicitly passes it to an action or command. Anyone with write access to this repository can change a workflow to use repository secrets, so restrict write access and review workflow changes. The SSH key for the VPS is not stored in GitHub or used by this deployment.
 

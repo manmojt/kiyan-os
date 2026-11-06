@@ -71,16 +71,54 @@ jobs:
           echo "update DBConfig set GraphDriver = 'overlay' where GraphDriver = '';" \
             | sudo sh -c '(cd /var/lib/containers/storage && sqlite3 db.sql)'
 
-      - name: Build Anaconda ISO with bootc-image-builder
+      - name: Build Fedora-aware installer input and Anaconda ISO
         id: build-anaconda-iso
-        uses: osbuild/bootc-image-builder-action@028e4d28330efe546229eb9cb52aee78174d2347 # pinned upstream action
-        with:
-          builder-image: quay.io/centos-bootc/bootc-image-builder@sha256:4d8a0d9d173a9f450ff42d70777e1e0a6681a68f5c0f5084b65222eceb1f4d05
-          config-file: ./iso-config.toml
-          image: ghcr.io/manmojt/kiyan-os:latest
-          types: anaconda-iso
-          rootfs: ext4
-          additional-args: --use-librepo=True
+        run: |
+          set -euo pipefail
+          builder_image=quay.io/centos-bootc/bootc-image-builder@sha256:4d8a0d9d173a9f450ff42d70777e1e0a6681a68f5c0f5084b65222eceb1f4d05
+          source_image=ghcr.io/manmojt/kiyan-os:latest
+
+          sudo podman pull "$builder_image"
+          sudo podman pull "$source_image"
+
+          # BIB resolves its installer RPM repositories from ID=, while the
+          # published Kiyan OS correctly uses ID=kiyan. Build a runner-local
+          # copy with Fedora's ID for RPM resolution. The kickstart below
+          # switches the installed system back to the published Kiyan image.
+          iso_context="$RUNNER_TEMP/kiyan-iso-builder"
+          mkdir -p "$iso_context"
+          cat > "$iso_context/Containerfile" <<'EOF'
+          FROM ghcr.io/manmojt/kiyan-os:latest
+          RUN set -eux; \
+              if [ -f /etc/os-release ] && [ ! -L /etc/os-release ]; then \
+                sed -i -E 's/^ID="?kiyan"?$/ID=fedora/' /etc/os-release; \
+              fi; \
+              sed -i -E 's/^ID="?kiyan"?$/ID=fedora/' /usr/lib/os-release; \
+              grep -qx 'ID=fedora' /etc/os-release; \
+              grep -qx 'ID=fedora' /usr/lib/os-release; \
+              grep -Eq '^VERSION_ID="?[0-9]+"?$' /usr/lib/os-release
+          EOF
+          sudo podman build --tag localhost/kiyan-os:iso-builder "$iso_context"
+          sudo podman run --rm --entrypoint /usr/bin/grep localhost/kiyan-os:iso-builder \
+            -E '^(ID|ID_LIKE|VERSION_ID)=' /usr/lib/os-release
+
+          mkdir -p output
+          sudo podman run --rm --privileged --security-opt label=type:unconfined_t \
+            --volume /var/lib/containers/storage:/var/lib/containers/storage \
+            --volume "$GITHUB_WORKSPACE/output:/output" \
+            --volume "$GITHUB_WORKSPACE/iso-config.toml:/config.toml:ro" \
+            "$builder_image" build \
+              --output /output \
+              --rootfs ext4 \
+              --config /config.toml \
+              --use-librepo=True \
+              --type anaconda-iso \
+              localhost/kiyan-os:iso-builder
+
+          sudo chown -R "$(id -u):$(id -g)" output
+          iso_path="$(find "$GITHUB_WORKSPACE/output" -type f -name '*.iso' -print -quit)"
+          test -n "$iso_path"
+          echo "anaconda-iso-output-path=$iso_path" >> "$GITHUB_OUTPUT"
 
       - name: Validate ISO boot entries and signed UEFI shim
         env:
