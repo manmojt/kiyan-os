@@ -59,7 +59,7 @@ jobs:
       - name: Install ISO signature inspection tool
         run: |
           sudo apt-get update
-          sudo apt-get install --yes sbsigntool sqlite3
+          sudo apt-get install --yes sbsigntool sqlite3 xorriso
 
       - name: Configure rootful Podman storage for image-builder
         run: |
@@ -71,48 +71,34 @@ jobs:
           echo "update DBConfig set GraphDriver = 'overlay' where GraphDriver = '';" \
             | sudo sh -c '(cd /var/lib/containers/storage && sqlite3 db.sql)'
 
-      - name: Build bootc generic ISO with pinned image-builder
-        env:
-          IMAGE_BUILDER: ghcr.io/osbuild/image-builder-cli@sha256:b23239209d2876cabeb44b16c96796d4a18c0810ff5ae1af3a26201e09d7c765
-          IMAGE_REF: ghcr.io/manmojt/kiyan-os:latest
-        run: |
-          set -euo pipefail
-          mkdir -p output
-          sudo podman pull "$IMAGE_REF"
-          sudo podman run --pull=newer --privileged --rm \
-            --security-opt label=type:unconfined_t \
-            --volume "$GITHUB_WORKSPACE/output:/output" \
-            --volume /var/lib/containers/storage:/var/lib/containers/storage \
-            "$IMAGE_BUILDER" \
-            build --output-dir /output --bootc-ref "$IMAGE_REF" \
-            --bootc-default-fs ext4 generic-iso
+      - name: Build Anaconda ISO with bootc-image-builder
+        id: build-anaconda-iso
+        uses: osbuild/bootc-image-builder-action@028e4d28330efe546229eb9cb52aee78174d2347 # pinned upstream action
+        with:
+          builder-image: quay.io/centos-bootc/bootc-image-builder@sha256:4d8a0d9d173a9f450ff42d70777e1e0a6681a68f5c0f5084b65222eceb1f4d05
+          config-file: ./iso-config.toml
+          image: ghcr.io/manmojt/kiyan-os:latest
+          types: anaconda-iso
+          rootfs: ext4
 
       - name: Validate ISO boot entries and signed UEFI shim
         env:
-          IMAGE_BUILDER: ghcr.io/osbuild/image-builder-cli@sha256:b23239209d2876cabeb44b16c96796d4a18c0810ff5ae1af3a26201e09d7c765
+          ISO_PATH: ${{ steps.build-anaconda-iso.outputs.anaconda-iso-output-path }}
         run: |
           set -euo pipefail
-          mapfile -t built_isos < <(find output -maxdepth 2 -type f -name '*.iso' -print)
-          if (( ${#built_isos[@]} != 1 )); then
-            printf 'Expected one ISO, found %s\n' "${#built_isos[@]}" >&2
-            exit 1
-          fi
+          test -s "$ISO_PATH"
+          mkdir -p output
           iso=output/Kiyan-OS-LB1-x86_64.iso
-          mv "${built_isos[0]}" "$iso"
+          mv "$ISO_PATH" "$iso"
           test -s "$iso"
           file "$iso"
 
-          docker run --rm --volume "$GITHUB_WORKSPACE/output:/output" \
-            --entrypoint /usr/bin/xorriso "$IMAGE_BUILDER" \
-            -indev /output/Kiyan-OS-LB1-x86_64.iso -report_el_torito plain \
-            | tee output/boot-media-report.txt
+          xorriso -indev "$iso" -report_el_torito plain | tee output/boot-media-report.txt
           grep -qi 'BIOS' output/boot-media-report.txt
           grep -qi 'UEFI' output/boot-media-report.txt
 
-          docker run --rm --volume "$GITHUB_WORKSPACE/output:/output" \
-            --entrypoint /usr/bin/xorriso "$IMAGE_BUILDER" \
-            -osirrox on -indev /output/Kiyan-OS-LB1-x86_64.iso \
-            -extract /EFI/BOOT/BOOTX64.EFI /output/BOOTX64.EFI
+          xorriso -osirrox on -indev "$iso" \
+            -extract /EFI/BOOT/BOOTX64.EFI output/BOOTX64.EFI
           test -s output/BOOTX64.EFI
           sbverify --list output/BOOTX64.EFI
 
