@@ -220,4 +220,8 @@ if __name__ == "__main__":
         raise SystemExit(main())
     except (HTTPError, URLError, OSError, ValueError, subprocess.CalledProcessError) as exc:
         log(f"failed: {exc}")
+        if isinstance(exc, subprocess.CalledProcessError):
+            detail = (exc.stderr or exc.stdout or "").strip()
+            if detail:
+                log(f"verification command output: {detail}")
         raise SystemExit(1)

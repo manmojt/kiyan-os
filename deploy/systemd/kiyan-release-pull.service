@@ -10,6 +10,7 @@ Group=ubuntu
 Environment=KIYAN_OUTPUT_DIR=/home/ubuntu/mac_shared
 StateDirectory=kiyan-os-pull
 StateDirectoryMode=0750
+Environment=HOME=/var/lib/kiyan-os-pull
 ExecStart=/usr/bin/python3 /usr/local/libexec/kiyan-release-pull.py
 TimeoutStartSec=2h
 NoNewPrivileges=yes
