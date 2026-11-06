@@ -20,6 +20,8 @@ modules:
         - bubblewrap
         - dislocker
         - dnsmasq
+        # Kiyan Store uses this CLI for its confirmed Distrobox installs.
+        - distrobox
         - dracut-live
         - ffmpeg
         - fprintd
@@ -63,6 +65,8 @@ modules:
 
   - type: files
     files:
+      # Stages the Phase 4–5 Kiyan suite binaries, desktop entries, Firefox
+      # policy/new-tab assets, package trust root, and system/user units.
       - source: system
         destination: /
 
@@ -119,6 +123,8 @@ modules:
         - kiyan-accent-sync.timer
         - kiyan-purepaste.service
         - kiyan-quicklook-shortcut.service
+        # Runs only after user opt-in; the service itself exits without a
+        # network request until smart_shopping_opt_in is true.
         - kiyan-browser-sync.timer
 
   - type: signing
