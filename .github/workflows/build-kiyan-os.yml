@@ -100,10 +100,10 @@ jobs:
           sudo podman pull "$builder_image"
           sudo podman pull "$source_image"
 
-          # BIB resolves its installer RPM repositories from ID=, while the
-          # published Kiyan OS correctly uses ID=kiyan. Build a runner-local
-          # copy with Fedora's ID for RPM resolution. The kickstart below
-          # switches the installed system back to the published Kiyan image.
+          # BIB resolves its installer RPM repositories from ID= and
+          # VERSION_ID=. Build a runner-local copy with Fedora 42 metadata so
+          # installer RPMs come from a stable Fedora release. The kickstart
+          # below switches the installed system back to the published image.
           iso_context="$RUNNER_TEMP/kiyan-iso-builder"
           mkdir -p "$iso_context"
           cat > "$iso_context/Containerfile" <<'EOF'
@@ -113,9 +113,11 @@ jobs:
                 sed -i -E 's/^ID="?kiyan"?$/ID=fedora/' /etc/os-release; \
               fi; \
               sed -i -E 's/^ID="?kiyan"?$/ID=fedora/' /usr/lib/os-release; \
+              sed -i -E 's/^VERSION_ID="?[0-9]+"?$/VERSION_ID=42/' /etc/os-release /usr/lib/os-release; \
               grep -qx 'ID=fedora' /etc/os-release; \
               grep -qx 'ID=fedora' /usr/lib/os-release; \
-              grep -Eq '^VERSION_ID="?[0-9]+"?$' /usr/lib/os-release
+              grep -qx 'VERSION_ID=42' /etc/os-release; \
+              grep -qx 'VERSION_ID=42' /usr/lib/os-release
           EOF
           sudo podman build --tag localhost/kiyan-os:iso-builder "$iso_context"
           sudo podman run --rm --entrypoint /usr/bin/grep localhost/kiyan-os:iso-builder \
@@ -125,7 +127,7 @@ jobs:
           sudo podman run --rm --privileged \
             --security-opt seccomp=unconfined \
             --security-opt apparmor=unconfined \
-            --security-opt label=type:unconfined_t \
+            --security-opt label=disable \
             --network host \
             --volume /var/lib/containers/storage:/var/lib/containers/storage \
             --volume "$GITHUB_WORKSPACE/output:/output" \
