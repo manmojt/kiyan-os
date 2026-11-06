@@ -141,7 +141,10 @@ jobs:
           ostreecontainer --url $source_image --no-signature-verification
           EOF
           mkdir -p output
-          sudo podman run --rm --security-opt label=disable \
+          sudo podman run --rm --privileged \
+            --security-opt seccomp=unconfined \
+            --security-opt apparmor=unconfined \
+            --security-opt label=disable \
             --volume "$RUNNER_TEMP:/work:ro" \
             --volume "$GITHUB_WORKSPACE/output:/output" \
             registry.fedoraproject.org/fedora:44 \
