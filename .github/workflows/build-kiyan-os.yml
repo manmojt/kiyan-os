@@ -162,7 +162,9 @@ jobs:
           test -s "$ISO_PATH"
           mkdir -p output
           iso=output/Kiyan-OS-LB1-x86_64.iso
-          mv "$ISO_PATH" "$iso"
+          if [[ ! "$ISO_PATH" -ef "$iso" ]]; then
+            mv "$ISO_PATH" "$iso"
+          fi
           test -s "$iso"
           file "$iso"
 
