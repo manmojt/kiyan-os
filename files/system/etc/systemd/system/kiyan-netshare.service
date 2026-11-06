@@ -1,0 +1,22 @@
+[Unit]
+Description=Kiyan VPN Wi-Fi and Ethernet sharing router
+Wants=NetworkManager.service
+After=NetworkManager.service network-online.target
+ConditionPathExists=/usr/libexec/kiyan-netshare-daemon
+
+[Service]
+Type=simple
+ExecStart=/usr/libexec/kiyan-netshare-daemon
+Restart=on-failure
+RestartSec=3s
+TimeoutStopSec=20s
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_NET_BIND_SERVICE
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/run /etc/NetworkManager/system-connections /etc/kiyan /proc/sys/net/ipv4/ip_forward
+
+[Install]
+WantedBy=multi-user.target

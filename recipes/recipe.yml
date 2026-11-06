@@ -37,6 +37,7 @@ modules:
         - librsvg2-tools
         - linux-firmware
         - mpv
+        - nftables
         - okular
         - openssl
         - p7zip
@@ -68,6 +69,23 @@ modules:
       google-fonts:
         - Vazirmatn
 
+  - type: default-flatpaks
+    configurations:
+      - scope: system
+        repo:
+          title: Flathub (system)
+        notify: false
+        install:
+          - org.localsend.localsend_app
+          - org.deskflow.deskflow
+          - com.github.dynobo.normcap
+          - io.github.dvlv.boxbuddyrs
+          - it.mijorus.gearlever
+          - io.missioncenter.MissionCenter
+          - com.github.wwmm.easyeffects
+          - dev.lizardbyte.app.Sunshine
+          - com.github.qarmin.czkawka
+
   - type: script
     scripts:
       - setup-kernel-hw.sh
@@ -86,6 +104,7 @@ modules:
     system:
       enabled:
         - kiyan-touchpad-watchdog.timer
+        - kiyan-battery-pro.service
         - ydotool.service
     user:
       enabled:

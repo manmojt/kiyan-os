@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Service
+Name=Kiyan AirShare
+MimeType=all/allfiles;application/octet-stream;
+Actions=kiyan-airshare;
+X-KDE-Priority=TopLevel
+
+[Desktop Action kiyan-airshare]
+Name=Send to Phone (Kiyan AirShare / LocalSend)
+Icon=preferences-system-network
+Exec=kiyan-airshare %F

@@ -1,0 +1,20 @@
+[Unit]
+Description=Kiyan Battery Pro power and charge management
+After=systemd-udev-trigger.service power-profiles-daemon.service
+Wants=power-profiles-daemon.service
+
+[Service]
+Type=simple
+ExecStart=/usr/libexec/kiyan-battery-pro-daemon
+Restart=on-failure
+RestartSec=10s
+User=root
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/sys/class/power_supply /sys/bus/pci/devices /sys/devices/system/cpu /sys/class/backlight /run
+NoNewPrivileges=yes
+CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_KILL
+
+[Install]
+WantedBy=multi-user.target

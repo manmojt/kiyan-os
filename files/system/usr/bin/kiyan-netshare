@@ -1,0 +1,50 @@
+#!/usr/bin/python3
+"""Control Kiyan's VPN-backed hotspot router."""
+import argparse
+import pathlib
+import shutil
+import subprocess
+import sys
+
+
+def call(argv, check=True, **kwargs):
+    return subprocess.run(argv, check=check, text=True, **kwargs)
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Share an active VPN over Wi-Fi and Ethernet")
+    parser.add_argument("action", choices=("start", "stop", "status", "qr"))
+    args = parser.parse_args()
+    if args.action in ("start", "stop"):
+        if not shutil.which("systemctl"):
+            parser.error("systemctl is unavailable")
+        call(["systemctl", args.action, "kiyan-netshare.service"])
+        return 0
+    if args.action == "status":
+        result = call(["systemctl", "is-active", "kiyan-netshare.service"], check=False)
+        print("Kiyan NetShare: " + ("running" if result.returncode == 0 else "stopped"))
+        state = pathlib.Path("/run/kiyan-netshare/status")
+        if state.exists():
+            print(state.read_text().strip())
+        return 0
+    result = call(["nmcli", "-g", "802-11-wireless.ssid,802-11-wireless-security.psk", "--show-secrets", "connection", "show", "Kiyan NetShare"], check=False, capture_output=True)
+    if result.returncode or not result.stdout.strip():
+        parser.error("Kiyan NetShare hotspot is not configured; run 'kiyan-netshare start' first")
+    lines = result.stdout.rstrip("\n").splitlines()
+    if len(lines) < 2 or not lines[0] or len(lines[1]) < 8:
+        parser.error("Hotspot credentials are unavailable or invalid")
+    ssid, password = lines[0], lines[1]
+    qr = call(["qrencode", "-t", "ANSIUTF8", f"WIFI:T:WPA;S:{ssid};P:{password};;"], check=False, capture_output=True)
+    if qr.returncode:
+        parser.error("qrencode failed")
+    sys.stdout.write(qr.stdout)
+    print(f"SSID: {ssid}")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except (OSError, subprocess.CalledProcessError) as exc:
+        print(f"kiyan-netshare: {exc}", file=sys.stderr)
+        raise SystemExit(1)
