@@ -12,7 +12,8 @@ HOME = pathlib.Path.home()
 STATE = HOME / ".local/state/kiyan"
 CONFIG = HOME / ".config"
 OWNED = ("kdeglobals", "kwinrc", "plasmarc", "plasma-org.kde.plasma.desktop-appletsrc",
-         "kglobalshortcutsrc", "dolphinrc", ".local/share/kxmlgui6/dolphin/dolphinui.rc")
+         "kglobalshortcutsrc", "kcminputrc", "dolphinrc",
+         ".local/share/kxmlgui6/dolphin/dolphinui.rc")
 
 
 def have(name):

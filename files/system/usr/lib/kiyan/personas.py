@@ -14,9 +14,10 @@ PERSONAS = {
     "windows11": {
         "lookandfeel": "org.kiyan.windows11",
         "name": "Windows 11 Mode",
-        "kwin": {"Windows": {"ElectricBorderMaximize": "true", "Placement": "Centered"}},
+        "kwin": {"Windows": {"ElectricBorderMaximize": "true", "ElectricBorderTiling": "true",
+                                "Placement": "Centered"}},
         "shortcuts": {},
-        "notes": "KWin edge tiling enabled. Plasma clipboard history remains available through the clipboard applet."
+        "notes": "Centered taskbar, system tray, KWin edge tiling, and Plasma clipboard history (Meta+V)."
     },
     "linux-pro": {
         "lookandfeel": "org.kiyan.linuxpro",
@@ -24,6 +25,6 @@ PERSONAS = {
         "kwin": {"Windows": {"ElectricBorderMaximize": "true", "ElectricBorderTiling": "true", "Placement": "Smart"},
                  "Plugins": {"kwin4_effect_overviewEnabled": "true", "kiyan-krohnkiteEnabled": "true"}},
         "shortcuts": {},
-        "notes": "Minimal desktop defaults. Install the Krohnkite KWin script separately to enable dynamic tiling."
+        "notes": "Minimal top panel with the bundled Kiyan dynamic master/stack tiler enabled."
     }
 }

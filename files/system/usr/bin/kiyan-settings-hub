@@ -2,7 +2,7 @@
 """Bilingual two-step launcher for eight Kiyan OS settings categories."""
 import sys
 sys.path.insert(0, "/usr/lib/kiyan")
-from desktop import error, have, run, notify, undo_snapshot
+from desktop import error, have, run, notify, undo_snapshot, snapshot
 
 CATEGORIES = {
  "personalization": ("Personalization / شخصی‌سازی", [("macos", "macOS Mode"), ("windows11", "Windows 11 Mode"), ("linux-pro", "Linux Pro Mode"), ("obsidian", "Obsidian Aurora Dark"), ("crystal", "Crystal Light")]),
@@ -30,6 +30,9 @@ def launch(action):
         modules = {"mouse": "kcm_touchpad", "display": "kcm_kscreen", "network": "kcm_networkmanagement",
                    "sound": "kcm_pulseaudio", "appearance": "kcm_lookandfeel", "keyboard": "kcm_keyboard",
                    "system": "kcm_about-distro"}
+        # Keep a rollback point before opening KDE settings modules that persist
+        # changes to the same user configuration covered by Undo Last Change.
+        if action != "system": snapshot()
         run(["kcmshell6", modules[action]])
 
 
