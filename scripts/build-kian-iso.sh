@@ -146,8 +146,7 @@ apt-get install -y --no-install-recommends \
     calamares-settings-ubuntu-common \
     initramfs-tools \
     casper
-KVER=$(ls /lib/modules | sort | tail -n1)
-update-initramfs -c -k "$KVER" || update-initramfs -c -k all
+update-initramfs -c -k all || update-initramfs -u -k all
 apt-get clean
 useradd -m -s /bin/bash -G sudo,video,audio,input,plugdev kian || true
 echo 'kian:kian' | chpasswd
