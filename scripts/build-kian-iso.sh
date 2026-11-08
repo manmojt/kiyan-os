@@ -125,6 +125,7 @@ apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--fo
     xorriso
 locale-gen en_US.UTF-8 fa_IR.UTF-8
 pam-auth-update --package --enable fprintd || true
+grep -q 'pam_fprintd.so' /etc/pam.d/common-auth || sed -i '1i auth [success=2 default=ignore] pam_fprintd.so' /etc/pam.d/common-auth
 systemctl enable NetworkManager bluetooth upower ufw
 mkdir -p /etc/systemd/system/multi-user.target.wants
 ln -sf /lib/systemd/system/NetworkManager.service /etc/systemd/system/multi-user.target.wants/NetworkManager.service
@@ -182,7 +183,9 @@ apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--fo
     plank \
     plymouth \
     plymouth-themes
-dbus-run-session -- flatpak remote-add --if-not-exists --system flathub https://dl.flathub.org/repo/flathub.flatpakrepo || wget -qO /etc/flatpak/remotes.d/flathub.flatpakrepo https://dl.flathub.org/repo/flathub.flatpakrepo || true
+mkdir -p /etc/flatpak/remotes.d /tmp/runtime-root
+wget -qO /etc/flatpak/remotes.d/flathub.flatpakrepo https://dl.flathub.org/repo/flathub.flatpakrepo
+XDG_RUNTIME_DIR=/tmp/runtime-root dbus-run-session -- flatpak remote-add --if-not-exists --system flathub /etc/flatpak/remotes.d/flathub.flatpakrepo
 systemctl enable sddm
 ln -sf /lib/systemd/system/sddm.service /etc/systemd/system/display-manager.service
 "
@@ -320,7 +323,7 @@ fi
 
 plasma-apply-lookandfeel -a "$PROFILE" --resetLayout 2>/dev/null || lookandfeeltool -a "$PROFILE" --resetLayout 2>/dev/null || true
 qdbus org.kde.KWin /KWin reconfigure 2>/dev/null || true
-(kquitapp5 plasmashell 2>/dev/null && kstart5 plasmashell >/dev/null 2>&1 &) || (plasmashell --replace >/dev/null 2>&1 &) || true
+(kquitapp5 plasmashell 2>/dev/null && sleep 1 && kstart5 plasmashell >/dev/null 2>&1 &) || (plasmashell --replace >/dev/null 2>&1 &) || true
 notify-send "Kian-OS Theme Engine" "چهره گرافیکی با موفقیت به $PROFILE تغییر یافت." 2>/dev/null || true
 SWITCHER
 sudo chmod +x "$ROOTFS/usr/local/bin/kian-theme-switcher"
@@ -335,11 +338,13 @@ apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--fo
     calamares \
     calamares-settings-ubuntu-common \
     squashfs-tools \
+    desktop-file-utils \
     initramfs-tools \
     casper
 update-initramfs -c -k all || update-initramfs -u -k all
 apt-get clean
-useradd -m -s /bin/bash -G sudo,video,audio,input,plugdev kian || true
+groupadd -f autologin
+useradd -m -s /bin/bash -G sudo,video,audio,input,plugdev,autologin kian || true
 echo kian:kian | chpasswd
 echo kian ALL=NOPASSWD:ALL > /etc/sudoers.d/kian
 "
@@ -398,6 +403,7 @@ MimeType=application/x-ms-dos-executable;application/x-msi;application/x-ms-shor
 NoDisplay=false
 Categories=System;Utility;
 WINE_DESKTOP
+sudo chroot "$ROOTFS" update-desktop-database /usr/share/applications
 
 # Complete Calamares Graphical Installer Configuration (/etc/calamares)
 sudo mkdir -p "$ROOTFS/etc/calamares/modules" "$ROOTFS/etc/calamares/branding/kian"
@@ -472,8 +478,11 @@ defaultGroups:
     - audio
     - input
     - network
-    - storage
-    - wheel
+    - adm
+    - cdrom
+    - dip
+    - plugdev
+    - lpadmin
     - sudo
 autologinGroup: autologin
 doAutologin: false
@@ -485,8 +494,8 @@ CAL_USERS
 cat << "CAL_BOOT" | sudo tee "$ROOTFS/etc/calamares/modules/bootloader.conf" >/dev/null
 ---
 efiBootLoader: "grub"
-kernel: "/vmlinuz"
-img: "/initrd.img"
+kernel: "/boot/vmlinuz"
+img: "/boot/initrd.img"
 timeout: "5"
 grubInstall: "grub-install"
 grubMkconfig: "grub-mkconfig"
@@ -581,7 +590,7 @@ set timeout=5
 set default=0
 
 menuentry "Kian-OS v2.1 (KDE Plasma Wayland - Live & Graphical Installer)" {
-    linux /casper/vmlinuz boot=casper quiet splash mitigations=off nvme_core.default_ps_max_latency_us=0 ---
+    linux /casper/vmlinuz boot=casper quiet splash mitigations=auto nvme_core.default_ps_max_latency_us=0 ---
     initrd /casper/initrd
 }
 
@@ -593,6 +602,6 @@ GRUB
 
 sudo grub-mkrescue -o "$ISO_FILE" "$ISO_DIR" 2>/dev/null || sudo xorriso -as mkisofs -r -V "KIAN_OS_V2" -o "$ISO_FILE" "$ISO_DIR"
 sudo chown -R "$(id -u):$(id -g)" "$OUT_DIR"
-(cd "$OUT_DIR" && sha256sum Kian-OS-v2-x86_64.iso > Kian-OS-v2-x86_64.iso.sha256)
+(cd "$OUT_DIR" && sha256sum Kian-OS-v2-x86_64.iso | tee Kian-OS-v2-x86_64.iso.sha256 > SHA256SUMS)
 ls -lh "$OUT_DIR"
 echo "🎉 Kian-OS v2.1 x86_64 ISO built with ZERO flaws!"

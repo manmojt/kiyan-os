@@ -35,4 +35,5 @@ jobs:
             --notes "Automated Council-Approved Kian-OS v2.1 Zero-Flaw Unified x86_64 ISO (Ubuntu 24.04 LTS + KDE Plasma Wayland + 3 Instant Themes + libfprint-2 + Flathub + Wine64)." \
             --latest \
             Kian-OS-v2-x86_64.iso \
-            Kian-OS-v2-x86_64.iso.sha256
+            Kian-OS-v2-x86_64.iso.sha256 \
+            SHA256SUMS
