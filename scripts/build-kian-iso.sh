@@ -69,11 +69,18 @@ PERCENT=50
 PRIORITY=100
 ZRAM
 
+# Prevent services from starting inside chroot during dpkg configure
+cat << "POLICY" | sudo tee "$ROOTFS/usr/sbin/policy-rc.d" >/dev/null
+#!/bin/sh
+exit 101
+POLICY
+sudo chmod +x "$ROOTFS/usr/sbin/policy-rc.d"
+
 echo "🔧 [Phase 2/6] Installing Kernel, Firmware, ZRAM, PipeWire Audio & Fingerprint (libfprint-2)..."
 sudo chroot "$ROOTFS" /bin/bash -euc "
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y --no-install-recommends \
+apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" --no-install-recommends \
     linux-image-generic \
     linux-firmware \
     zram-tools \
@@ -121,7 +128,7 @@ systemctl enable NetworkManager bluetooth upower fprintd ufw || true
 echo "🎨 [Phase 3/6] Installing Full KDE Plasma Wayland, Applets (Wi-Fi/BT/Audio/Power/Screen), Discover & Kvantum..."
 sudo chroot "$ROOTFS" /bin/bash -euc "
 export DEBIAN_FRONTEND=noninteractive
-apt-get install -y --no-install-recommends \
+apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" --no-install-recommends \
     kde-plasma-desktop \
     plasma-workspace-wayland \
     kwin-wayland \
@@ -312,7 +319,7 @@ sudo chmod +x "$ROOTFS/usr/local/bin/kian-theme-switcher"
 echo "🍷 [Phase 5/6] Configuring Wine .exe Double-Click Runner, SDDM Wayland Autologin & Calamares Installer..."
 sudo chroot "$ROOTFS" /bin/bash -euc "
 export DEBIAN_FRONTEND=noninteractive
-apt-get install -y --no-install-recommends \
+apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" --no-install-recommends \
     wine \
     wine64 \
     binfmt-support \
@@ -548,6 +555,7 @@ DESK_THEME
 
 sudo chmod +x "$ROOTFS/home/kian/Desktop/"*.desktop
 sudo chroot "$ROOTFS" chown -R kian:kian /home/kian
+sudo rm -f "$ROOTFS/usr/sbin/policy-rc.d"
 
 cleanup
 
