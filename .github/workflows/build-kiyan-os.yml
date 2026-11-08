@@ -24,16 +24,15 @@ jobs:
       - name: Execute Council-Approved Kian-OS v2 Build Pipeline
         run: ./scripts/build-kian-iso.sh
 
-      - name: Split ISO for GitHub Release & Publish
+      - name: Publish Single Unified ISO to GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           cd output
-          split --bytes=1800MiB --numeric-suffixes=0 --suffix-length=3 Kian-OS-v2-x86_64.iso Kian-OS-v2-x86_64.iso.part-
           TAG="kian-v2-run-${GITHUB_RUN_NUMBER}"
           gh release create "$TAG" \
-            --title "Kian-OS v2 (x86_64) Build #${GITHUB_RUN_NUMBER}" \
-            --notes "Automated Council-Approved Kian-OS v2 (Ubuntu 24.04 LTS + KDE Plasma Wayland + 3 Themes + libfprint-2 + Proton) x86_64 ISO." \
+            --title "Kian-OS v2.1 Zero-Flaw (x86_64) Build #${GITHUB_RUN_NUMBER}" \
+            --notes "Automated Council-Approved Kian-OS v2.1 Zero-Flaw Unified x86_64 ISO (Ubuntu 24.04 LTS + KDE Plasma Wayland + 3 Instant Themes + libfprint-2 + Flathub + Wine64)." \
             --latest \
-            Kian-OS-v2-x86_64.iso.sha256 \
-            Kian-OS-v2-x86_64.iso.part-*
+            Kian-OS-v2-x86_64.iso \
+            Kian-OS-v2-x86_64.iso.sha256

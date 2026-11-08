@@ -113,6 +113,8 @@ apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--fo
     pciutils \
     usbutils \
     kmod \
+    file \
+    dbus \
     ufw \
     apparmor \
     grub-pc-bin \
@@ -121,9 +123,13 @@ apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--fo
     shim-signed \
     mtools \
     xorriso
-locale-gen en_US.UTF-8 fa_IR.UTF-8 || true
-pam-auth-update --enable fprintd || true
-systemctl enable NetworkManager bluetooth upower fprintd ufw || true
+locale-gen en_US.UTF-8 fa_IR.UTF-8
+pam-auth-update --package --enable fprintd || true
+systemctl enable NetworkManager bluetooth upower ufw
+mkdir -p /etc/systemd/system/multi-user.target.wants
+ln -sf /lib/systemd/system/NetworkManager.service /etc/systemd/system/multi-user.target.wants/NetworkManager.service
+ln -sf /lib/systemd/system/bluetooth.service /etc/systemd/system/multi-user.target.wants/bluetooth.service
+ln -sf /lib/systemd/system/ufw.service /etc/systemd/system/multi-user.target.wants/ufw.service
 "
 
 echo "🎨 [Phase 3/6] Installing Full KDE Plasma Wayland, Applets (Wi-Fi/BT/Audio/Power/Screen), Discover & Kvantum..."
@@ -176,8 +182,9 @@ apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--fo
     plank \
     plymouth \
     plymouth-themes
-flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo || true
-systemctl enable sddm || true
+dbus-run-session -- flatpak remote-add --if-not-exists --system flathub https://dl.flathub.org/repo/flathub.flatpakrepo || wget -qO /etc/flatpak/remotes.d/flathub.flatpakrepo https://dl.flathub.org/repo/flathub.flatpakrepo || true
+systemctl enable sddm
+ln -sf /lib/systemd/system/sddm.service /etc/systemd/system/display-manager.service
 "
 
 echo "✨ [Phase 4/6] Engineering Real 3-Profile Plasma Layout Engine (Mac Aqua / Win 11 Fluent / Kian Native)..."
@@ -313,6 +320,7 @@ fi
 
 plasma-apply-lookandfeel -a "$PROFILE" --resetLayout 2>/dev/null || lookandfeeltool -a "$PROFILE" --resetLayout 2>/dev/null || true
 qdbus org.kde.KWin /KWin reconfigure 2>/dev/null || true
+(kquitapp5 plasmashell 2>/dev/null && kstart5 plasmashell >/dev/null 2>&1 &) || (plasmashell --replace >/dev/null 2>&1 &) || true
 notify-send "Kian-OS Theme Engine" "چهره گرافیکی با موفقیت به $PROFILE تغییر یافت." 2>/dev/null || true
 SWITCHER
 sudo chmod +x "$ROOTFS/usr/local/bin/kian-theme-switcher"
