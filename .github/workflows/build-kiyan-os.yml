@@ -1,0 +1,44 @@
+name: Build Kian-OS v2 (Council Approved x86_64)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - 'scripts/**'
+      - '.github/workflows/build-kiyan-os.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build-kian-iso:
+    name: Build Ubuntu 24.04 + KDE Plasma Wayland + 3 Themes x86_64 ISO
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout Kian-OS Repository
+        uses: actions/checkout@v4
+
+      - name: Maximize Runner Disk Space & Install ISO Tools
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
+          sudo apt-get update
+          sudo apt-get install -y debootstrap squashfs-tools xorriso grub-pc-bin grub-efi-amd64-bin mtools zstd
+
+      - name: Execute Council-Approved Kian-OS v2 Build Pipeline
+        run: ./scripts/build-kian-iso.sh
+
+      - name: Split ISO for GitHub Release & Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd output
+          split --bytes=1800MiB --numeric-suffixes=0 --suffix-length=3 Kian-OS-v2-x86_64.iso Kian-OS-v2-x86_64.iso.part-
+          TAG="kian-v2-run-${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" \
+            --title "Kian-OS v2 (x86_64) Build #${GITHUB_RUN_NUMBER}" \
+            --notes "Automated Council-Approved Kian-OS v2 (Ubuntu 24.04 LTS + KDE Plasma Wayland + 3 Themes + libfprint-2 + Proton) x86_64 ISO." \
+            --latest \
+            Kian-OS-v2-x86_64.iso.sha256 \
+            Kian-OS-v2-x86_64.iso.part-*
