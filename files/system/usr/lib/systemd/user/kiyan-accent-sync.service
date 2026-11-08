@@ -1,7 +1,0 @@
-[Unit]
-Description=Synchronize Kiyan accent with the desktop wallpaper
-After=graphical-session.target
-
-[Service]
-Type=oneshot
-ExecStart=/usr/bin/kiyan-accent-sync

@@ -1,9 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=Kiyan Extractor
-Name[fa]=استخراج‌گر کیان
-Comment=Extract archives and repair Persian filenames
-Exec=kiyan-extractor
-Icon=ark
-Terminal=false
-Categories=Utility;Archiving;

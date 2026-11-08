@@ -1,9 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=Kiyan Store
-Name[fa]=فروشگاه کیان
-Comment=Install Flatpak, Distrobox, Kiyan and Windows applications
-Exec=kiyan-store
-Icon=org.kde.discover
-Terminal=false
-Categories=Settings;PackageManager;

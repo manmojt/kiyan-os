@@ -1,9 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=Kiyan Converter
-Name[fa]=مبدل کیان
-Comment=Convert media and documents offline
-Exec=kiyan-converter
-Icon=convert
-Terminal=false
-Categories=AudioVideo;

@@ -1,9 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=Kiyan NetShare
-Comment=Share an active VPN connection over a hotspot
-Exec=kiyan-netshare start
-Icon=network-wireless-hotspot
-Terminal=false
-Categories=Network;
-StartupNotify=true

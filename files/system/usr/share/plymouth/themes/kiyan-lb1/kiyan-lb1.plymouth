@@ -1,8 +1,0 @@
-[Plymouth Theme]
-Name=Kiyan OS LB1
-Description=OLED-black Kiyan OS boot splash
-ModuleName=script
-
-[script]
-ImageDir=/usr/share/plymouth/themes/kiyan-lb1
-ScriptFile=/usr/share/plymouth/themes/kiyan-lb1/kiyan-lb1.script
