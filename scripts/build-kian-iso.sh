@@ -84,6 +84,7 @@ apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--fo
     linux-image-generic \
     linux-firmware \
     zram-tools \
+    zstd \
     systemd-sysv \
     dbus-user-session \
     network-manager \
@@ -330,7 +331,7 @@ apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--fo
     casper
 update-initramfs -c -k all || update-initramfs -u -k all
 apt-get clean
-useradd -m -s /bin/bash -G sudo,video,audio,input,plugdev,netdev kian || true
+useradd -m -s /bin/bash -G sudo,video,audio,input,plugdev kian || true
 echo kian:kian | chpasswd
 echo kian ALL=NOPASSWD:ALL > /etc/sudoers.d/kian
 "
