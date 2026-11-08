@@ -554,7 +554,7 @@ Terminal=false
 Categories=Settings;DesktopSettings;
 DESK_THEME
 
-sudo chmod +x "$ROOTFS/home/kian/Desktop/"*.desktop
+sudo chmod +x "$ROOTFS/home/kian/Desktop/Install-Kian-OS.desktop" "$ROOTFS/home/kian/Desktop/Kian-Theme-Switcher.desktop"
 sudo chroot "$ROOTFS" chown -R kian:kian /home/kian
 sudo rm -f "$ROOTFS/usr/sbin/policy-rc.d"
 
