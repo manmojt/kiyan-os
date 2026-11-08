@@ -166,7 +166,7 @@ apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--fo
     ark \
     gwenview \
     okular \
-    spectacle \
+    kde-spectacle \
     kcalc \
     vlc \
     falkon \
