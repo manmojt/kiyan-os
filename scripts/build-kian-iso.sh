@@ -144,7 +144,10 @@ apt-get install -y --no-install-recommends \
     binfmt-support \
     calamares \
     calamares-settings-ubuntu-common \
+    initramfs-tools \
     casper
+KVER=$(ls /lib/modules | sort | tail -n1)
+update-initramfs -c -k "$KVER" || update-initramfs -c -k all
 apt-get clean
 useradd -m -s /bin/bash -G sudo,video,audio,input,plugdev kian || true
 echo 'kian:kian' | chpasswd
@@ -154,8 +157,8 @@ echo 'kian ALL=NOPASSWD:ALL' > /etc/sudoers.d/kian
 cleanup
 
 echo "💿 [Phase 5/5] Packaging SquashFS (ZSTD) and Bootable Hybrid UEFI/BIOS x86_64 ISO..."
-KERNEL=$(ls -t "$ROOTFS/boot/vmlinuz"* | head -1)
-INITRD=$(ls -t "$ROOTFS/boot/initrd.img"* | head -1)
+KERNEL=$(sudo find "$ROOTFS/boot" -maxdepth 1 -type f -name "vmlinuz-*" | sort | tail -n1)
+INITRD=$(sudo find "$ROOTFS/boot" -maxdepth 1 -type f -name "initrd.img-*" | sort | tail -n1)
 sudo cp "$KERNEL" "$ISO_DIR/casper/vmlinuz"
 sudo cp "$INITRD" "$ISO_DIR/casper/initrd"
 
