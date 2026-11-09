@@ -188,7 +188,8 @@ if [[ -f "${TARGET_SRC}/scripts/config" && "${DRY_RUN}" != "1" ]]; then
     "${TARGET_SRC}/scripts/config" --set-val CONFIG_MODULE_SIG_ALL y
     "${TARGET_SRC}/scripts/config" --set-val CONFIG_MODULE_SIG_SHA512 y
     "${TARGET_SRC}/scripts/config" --set-str CONFIG_MODULE_SIG_KEY "${MOK_PRIV}"
-    "${TARGET_SRC}/scripts/config" --set-str CONFIG_SYSTEM_TRUSTED_KEYS "${MOK_PEM}"
+    "${TARGET_SRC}/scripts/config" --set-str CONFIG_SYSTEM_TRUSTED_KEYS ""
+    "${TARGET_SRC}/scripts/config" --set-str CONFIG_SYSTEM_REVOCATION_KEYS ""
 
     log_info "Reconciling configuration defaults (make olddefconfig)..."
     make olddefconfig
