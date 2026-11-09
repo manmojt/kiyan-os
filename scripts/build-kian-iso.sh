@@ -185,7 +185,7 @@ apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--fo
     plymouth-themes
 mkdir -p /etc/flatpak/remotes.d /tmp/runtime-root
 wget -qO /etc/flatpak/remotes.d/flathub.flatpakrepo https://dl.flathub.org/repo/flathub.flatpakrepo
-XDG_RUNTIME_DIR=/tmp/runtime-root dbus-run-session -- flatpak remote-add --if-not-exists --system flathub /etc/flatpak/remotes.d/flathub.flatpakrepo
+XDG_RUNTIME_DIR=/tmp/runtime-root dbus-run-session -- flatpak remote-add --if-not-exists --system flathub /etc/flatpak/remotes.d/flathub.flatpakrepo || true
 systemctl enable sddm
 ln -sf /lib/systemd/system/sddm.service /etc/systemd/system/display-manager.service
 "
@@ -346,7 +346,7 @@ apt-get clean
 groupadd -f autologin
 useradd -m -s /bin/bash -G sudo,video,audio,input,plugdev,autologin kian || true
 echo kian:kian | chpasswd
-echo kian ALL=NOPASSWD:ALL > /etc/sudoers.d/kian
+echo kian ALL=NOPASSWD:ALL > /etc/sudoers.d/kian && chmod 0440 /etc/sudoers.d/kian
 "
 
 # SDDM Autologin directly into KDE Plasma Wayland (with fallback to X11 in Safe Mode)
@@ -520,8 +520,8 @@ strings:
     shortVersionedName:  "Kian-OS 2.1"
     bootloaderEntryName: "Kian-OS"
 images:
-    productLogo:         "/usr/share/icons/Papirus-Dark/64x64/apps/distributor-logo.svg"
-    productIcon:         "/usr/share/icons/Papirus-Dark/64x64/apps/distributor-logo.svg"
+    productLogo:         "/usr/share/icons/Papirus/64x64/apps/distributor-logo-absolute.svg"
+    productIcon:         "/usr/share/icons/Papirus/64x64/apps/distributor-logo-absolute.svg"
 slideshow:               "show.qml"
 style:
    sidebarBackground:    "#0f172a"
@@ -566,7 +566,7 @@ Version=1.0
 Name=Kian Theme Switcher (تغییر یک‌کلیکی ظاهر مک / ویندوز / لینوکس)
 Comment=Switch instantly between macOS Aqua, Windows 11 Fluent, and Kian-Linux Native
 Exec=/usr/local/bin/kian-theme-switcher
-Icon=preferences-desktop-theme-global
+Icon=preferences-desktop-theme
 Terminal=false
 Categories=Settings;DesktopSettings;
 DESK_THEME
