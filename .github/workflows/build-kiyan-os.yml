@@ -22,7 +22,7 @@ jobs:
           sudo apt-get install -y debootstrap squashfs-tools xorriso grub-pc-bin grub-efi-amd64-bin mtools zstd
 
       - name: Execute Council-Approved Kian-OS v2 Build Pipeline
-        run: ./scripts/build-kian-iso.sh
+        run: sudo ./scripts/build-kian-iso.sh
 
       - name: Publish Single Unified ISO to GitHub Release
         env:
