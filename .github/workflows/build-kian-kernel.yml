@@ -1,0 +1,40 @@
+name: Build Kian-OS v3 Superkernel (.deb)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-kernel:
+    name: Compile & Package linux-kian v3 (BORE + NTSync + IPU6)
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Free Runner Disk Space & Install Kernel Toolchain
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
+          sudo apt-get update
+          sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev bc dwarves rsync kmod cpio sbsigntool zstd
+
+      - name: Execute Superkernel Build Pipeline
+        run: |
+          sudo ./build/01_build_kernel.sh -j $(nproc)
+
+      - name: Publish Kernel Packages (.deb) to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd build/out/kernel_pkgs
+          ls -lh *.deb
+          sha256sum *.deb > SHA256SUMS
+          TAG="linux-kian-v3-build-${{ github.run_number }}"
+          gh release create "$TAG" \
+            --title "linux-kian v3.0.0-1 Hybrid Superkernel (Ubuntu Noble 6.8 LTS) #${{ github.run_number }}" \
+            --notes "Automated Clean Build of linux-kian v3 with BORE 1000Hz Scheduler, Valve NTSync, Microsoft Surface IPU6, and Google BBRv3." \
+            --latest \
+            *.deb SHA256SUMS

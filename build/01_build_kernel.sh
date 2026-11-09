@@ -109,14 +109,11 @@ if [[ ! -f "${TARGET_SRC}/Makefile" ]]; then
     else
         log_info "Cloning Ubuntu Noble kernel tree (branch: ${DISTRO_CODENAME})..."
         mkdir -p "$(dirname "${TARGET_SRC}")"
-        git clone --depth 1 --branch "${DISTRO_CODENAME}" \
-            git://git.launchpad.net/~ubuntu-kernel/ubuntu/+source/linux/+git/noble \
-            "${TARGET_SRC}" || {
-                log_warn "Launchpad git mirror unavailable; trying GitHub Ubuntu kernel mirror..."
-                git clone --depth 1 --branch "Ubuntu-6.8.0-31.31" \
-                    https://github.com/canonical/ubuntu-noble.git \
-                    "${TARGET_SRC}"
-            }
+        log_info "Cloning Linux 6.8 baseline from GitHub..."
+        git clone --depth 1 --branch v6.8 https://github.com/torvalds/linux.git "${TARGET_SRC}" || {
+            log_warn "GitHub mirror failed; attempting kernel.org shallow clone..."
+            git clone --depth 1 --branch v6.8 https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git "${TARGET_SRC}"
+        }
     fi
 fi
 
@@ -182,7 +179,10 @@ log_info "Copying ${KERNEL_CONFIG_FILE} to ${TARGET_SRC}/.config..."
 run_cmd cp "${KERNEL_CONFIG_FILE}" "${TARGET_SRC}/.config"
 
 if [[ -f "${TARGET_SRC}/scripts/config" && "${DRY_RUN}" != "1" ]]; then
-    log_info "Embedding Secure Boot MOK keys into kernel configuration..."
+    log_info "Optimizing kernel build: disabling heavy debuginfo to accelerate compile and prevent BTF issues..."
+    "${TARGET_SRC}/scripts/config" --disable DEBUG_INFO
+    "${TARGET_SRC}/scripts/config" --disable DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT
+    "${TARGET_SRC}/scripts/config" --disable DEBUG_INFO_BTF
     "${TARGET_SRC}/scripts/config" --set-val CONFIG_MODULE_SIG y
     "${TARGET_SRC}/scripts/config" --set-val CONFIG_MODULE_SIG_ALL y
     "${TARGET_SRC}/scripts/config" --set-val CONFIG_MODULE_SIG_SHA512 y
