@@ -182,7 +182,10 @@ apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--fo
     zenity \
     plank \
     plymouth \
-    plymouth-themes
+    plymouth-themes \
+    libnotify-bin \
+    kde-cli-tools \
+    qttools5-dev-tools
 mkdir -p /etc/flatpak/remotes.d /tmp/runtime-root
 wget -qO /etc/flatpak/remotes.d/flathub.flatpakrepo https://dl.flathub.org/repo/flathub.flatpakrepo
 XDG_RUNTIME_DIR=/tmp/runtime-root dbus-run-session -- flatpak remote-add --if-not-exists --system flathub /etc/flatpak/remotes.d/flathub.flatpakrepo || true
@@ -322,8 +325,7 @@ else
 fi
 
 plasma-apply-lookandfeel -a "$PROFILE" --resetLayout 2>/dev/null || lookandfeeltool -a "$PROFILE" --resetLayout 2>/dev/null || true
-qdbus org.kde.KWin /KWin reconfigure 2>/dev/null || true
-(kquitapp5 plasmashell 2>/dev/null && sleep 1 && kstart5 plasmashell >/dev/null 2>&1 &) || (plasmashell --replace >/dev/null 2>&1 &) || true
+plasmashell --replace >/dev/null 2>&1 &
 notify-send "Kian-OS Theme Engine" "چهره گرافیکی با موفقیت به $PROFILE تغییر یافت." 2>/dev/null || true
 SWITCHER
 sudo chmod +x "$ROOTFS/usr/local/bin/kian-theme-switcher"
@@ -354,7 +356,7 @@ sudo mkdir -p "$ROOTFS/etc/sddm.conf.d"
 cat << "SDDM_CONF" | sudo tee "$ROOTFS/etc/sddm.conf.d/autologin.conf" >/dev/null
 [Autologin]
 User=kian
-Session=plasma
+Session=plasmawayland
 Relogin=false
 
 [Theme]
@@ -571,7 +573,10 @@ Terminal=false
 Categories=Settings;DesktopSettings;
 DESK_THEME
 
-sudo chmod +x "$ROOTFS/home/kian/Desktop/Install-Kian-OS.desktop" "$ROOTFS/home/kian/Desktop/Kian-Theme-Switcher.desktop"
+sudo mkdir -p "$ROOTFS/etc/skel/Desktop"
+sudo cp "$ROOTFS/home/kian/Desktop/Install-Kian-OS.desktop" "$ROOTFS/etc/skel/Desktop/"
+sudo cp "$ROOTFS/home/kian/Desktop/Kian-Theme-Switcher.desktop" "$ROOTFS/etc/skel/Desktop/"
+sudo chmod +x "$ROOTFS/home/kian/Desktop/Install-Kian-OS.desktop" "$ROOTFS/home/kian/Desktop/Kian-Theme-Switcher.desktop" "$ROOTFS/etc/skel/Desktop/Install-Kian-OS.desktop" "$ROOTFS/etc/skel/Desktop/Kian-Theme-Switcher.desktop"
 sudo chroot "$ROOTFS" chown -R kian:kian /home/kian
 sudo rm -f "$ROOTFS/usr/sbin/policy-rc.d"
 
@@ -590,7 +595,7 @@ set timeout=5
 set default=0
 
 menuentry "Kian-OS v2.1 (KDE Plasma Wayland - Live & Graphical Installer)" {
-    linux /casper/vmlinuz boot=casper quiet splash mitigations=auto nvme_core.default_ps_max_latency_us=0 ---
+    linux /casper/vmlinuz boot=casper persistent noprompt quiet splash mitigations=auto nvme_core.default_ps_max_latency_us=0 ---
     initrd /casper/initrd
 }
 
