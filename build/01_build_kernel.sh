@@ -210,6 +210,7 @@ elif [[ "${DRY_RUN}" == "1" ]]; then
 else
     log_info "Starting kernel compilation: make -j${JOBS} bindeb-pkg..."
     make -j"${JOBS}" bindeb-pkg \
+        DPKG_FLAGS="-d" \
         LOCALVERSION="-kian-v3" \
         KDEB_PKGVERSION="${KERNEL_PKG_VERSION}" \
         KBUILD_BUILD_USER="kian-builder" \
