@@ -155,7 +155,7 @@ ensure_mok_keys() {
     local mok_pem="${KEYS_DIR}/kian_mok.pem"
     local mok_cnf="${KEYS_DIR}/kian_mok.cnf"
 
-    if [[ -f "${mok_priv}" && -f "${mok_pem}" && -f "${mok_der}" ]]; then
+    if [[ -s "${mok_priv}" && -s "${mok_pem}" && -s "${mok_der}" ]]; then
         log_info "Existing Kian MOK keypair detected at ${KEYS_DIR}."
         return 0
     fi

@@ -187,7 +187,13 @@ if [[ -f "${TARGET_SRC}/scripts/config" && "${DRY_RUN}" != "1" ]]; then
     "${TARGET_SRC}/scripts/config" --set-val CONFIG_MODULE_SIG y
     "${TARGET_SRC}/scripts/config" --set-val CONFIG_MODULE_SIG_ALL y
     "${TARGET_SRC}/scripts/config" --set-val CONFIG_MODULE_SIG_SHA512 y
-    "${TARGET_SRC}/scripts/config" --set-str CONFIG_MODULE_SIG_KEY "${MOK_PRIV}"
+    if [[ -s "" ]]; then
+        log_info "Using verified Kian RSA-4096 MOK key for module signing..."
+        "/scripts/config" --set-str CONFIG_MODULE_SIG_KEY ""
+    else
+        log_warn "MOK key missing or empty; using kernel auto-generated signing key..."
+        "/scripts/config" --set-str CONFIG_MODULE_SIG_KEY "certs/signing_key.pem"
+    fi
     "${TARGET_SRC}/scripts/config" --set-str CONFIG_SYSTEM_TRUSTED_KEYS ""
     "${TARGET_SRC}/scripts/config" --set-str CONFIG_SYSTEM_REVOCATION_KEYS ""
 
