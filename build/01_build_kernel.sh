@@ -123,11 +123,9 @@ fi
 log_step "Applying KIAN-OS v3 Kernel Patches"
 
 PATCH_SERIES=(
-    "0001-sched-bore-noble.patch"
-    "0002-drivers-misc-ntsync.patch"
-    "0003-drivers-media-ipu6-dphy-settle.patch"
-    "0004-drivers-media-ov5693-acpi-hid.patch"
-    "0005-net-ipv4-tcp-bbrv3.patch"
+    "0001-bore.patch"
+    "0002-ntsync.patch"
+    "0003-bbr3.patch"
 )
 
 cd "${TARGET_SRC}"
