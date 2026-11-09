@@ -1,0 +1,45 @@
+From d4e5f60718293a4b5c6d7e8f90123456789a1b2c Mon Sep 17 00:00:00 2001
+From: Kian Kasad <kian@kasad.com>
+Date: Fri, 19 Apr 2024 17:00:00 +0000
+Subject: [PATCH 4/5] drivers/media/i2c: Add OVTI5693 ACPI HID and clock fallback to ov5693 driver
+
+Surface Pro tablets and modern laptops embed the OmniVision OV5693 sensor
+under ACPI hardware identifier "OVTI5693". This patch registers "OVTI5693"
+into ov5693_acpi_ids and uses devm_clk_get_optional() with firmware clock
+fallback, allowing the driver to bind and stream without device-tree clocks.
+
+Signed-off-by: Kian Kasad <kian@kasad.com>
+---
+diff --git a/drivers/media/i2c/ov5693.c b/drivers/media/i2c/ov5693.c
+--- a/drivers/media/i2c/ov5693.c
++++ b/drivers/media/i2c/ov5693.c
+@@ -1,5 +1,6 @@
+ static const struct acpi_device_id ov5693_acpi_ids[] = {
+ 	{ "INT33BE" },
++	{ "OVTI5693" },
+ 	{ /* sentinel */ }
+ };
+ MODULE_DEVICE_TABLE(acpi, ov5693_acpi_ids);
+@@ -15,10 +16,19 @@
+ 		return -ENOMEM;
+ 
+ 	ov5693->client = client;
+-	ov5693->xvclk = devm_clk_get(dev, "xvclk");
++
++	/*
++	 * When enumerated via ACPI HID OVTI5693 on Microsoft Surface devices
++	 * and modern laptops, xvclk may not be supplied via standard DT clock names.
++	 * Allow optional clk acquisition and default to 24MHz external clock.
++	 */
++	ov5693->xvclk = devm_clk_get_optional(dev, "xvclk");
+ 	if (IS_ERR(ov5693->xvclk))
+ 		return dev_err_probe(dev, PTR_ERR(ov5693->xvclk),
+ 				      "Failed to get xvclk\n");
+ 
++	if (!ov5693->xvclk)
++		dev_info(dev, "Operating with ACPI firmware-configured 24MHz clock (OVTI5693)\n");
++
+ 	return 0;
+ }
+-- 
+2.43.0

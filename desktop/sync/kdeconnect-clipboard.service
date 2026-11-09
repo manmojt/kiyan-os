@@ -1,0 +1,22 @@
+[Unit]
+Description=KDE Connect Local Peer-to-Peer Clipboard Synchronization Service
+Documentation=https://userbase.kde.org/KDEConnect
+PartOf=graphical-session.target
+After=graphical-session.target network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/libexec/kdeconnectd
+Restart=on-failure
+RestartSec=3
+Slice=session.slice
+
+# Wayland environment bindings
+Environment="QT_QPA_PLATFORM=wayland;xcb" "XDG_SESSION_TYPE=wayland"
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=full
+
+[Install]
+WantedBy=graphical-session.target default.target

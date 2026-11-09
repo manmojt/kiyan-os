@@ -1,0 +1,18 @@
+[ req ]
+default_bits = 4096
+distinguished_name = req_distinguished_name
+prompt = no
+string_mask = utf8only
+x509_extensions = myexts
+
+[ req_distinguished_name ]
+O = KIAN-OS Foundation
+CN = KIAN-OS v3 Kernel & Module Master Signing Authority
+emailAddress = security@kian-os.org
+
+[ myexts ]
+basicConstraints = critical,CA:FALSE
+keyUsage = digitalSignature
+extendedKeyUsage = codeSigning, 1.3.6.1.4.1.2312.16.1.2
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid

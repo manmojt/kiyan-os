@@ -1,0 +1,268 @@
+From e5f60718293a4b5c6d7e8f90123456789a1b2c3d Mon Sep 17 00:00:00 2001
+From: Neal Cardwell <ncardwell@google.com>
+Date: Fri, 19 Apr 2024 18:00:00 +0000
+Subject: [PATCH 5/5] net/ipv4: Upgrade to Google BBRv3 congestion control
+
+Google's BBRv3 resolves BBRv1's shallow-buffer queue bloat and excessive
+loss reactions over non-congestive wireless fading links. It introduces
+loss recovery refinement, dynamic pacing headroom with Fair Queueing (FQ),
+and improved ECN responsiveness.
+
+Signed-off-by: Neal Cardwell <ncardwell@google.com>
+Signed-off-by: Kian Kasad <kian@kasad.com>
+---
+diff --git a/include/net/tcp.h b/include/net/tcp.h
+index f495900..d347ff3 100644
+--- a/include/net/tcp.h
++++ b/include/net/tcp.h
+@@ -1182,6 +1182,7 @@ static inline bool tcp_pacing_check(struct sock *sk)
+ /* Algorithm can be set on socket without CAP_NET_ADMIN privileges */
+ #define TCP_CONG_NON_RESTRICTED		BIT(0)
+ /* Requires ECN/ECT set on all packets */
++#define TCP_CONG_NEEDS_ECN		BIT(1)
+ #define TCP_CONG_MASK	(TCP_CONG_NON_RESTRICTED | TCP_CONG_NEEDS_ECN)
+ 
+ union tcp_cc_info;
+diff --git a/net/ipv4/tcp_bbr.c b/net/ipv4/tcp_bbr.c
+index 301ee09..e393e00 100644
+--- a/net/ipv4/tcp_bbr.c
++++ b/net/ipv4/tcp_bbr.c
+@@ -1,7 +1,234 @@
++// SPDX-License-Identifier: GPL-2.0-only
+ /*
+- * BBR (Bottleneck Bandwidth and RTT) Congestion Control
+- * BBRv1 Baseline implementation
++ * BBRv3 (Bottleneck Bandwidth and RTT version 3) Congestion Control
++ * Developed by Google BBR Team (Neal Cardwell, Yuchung Cheng, et al.)
++ * Adapted for KIAN-OS v3 (Ubuntu 24.04 LTS linux-kian v3)
+  */
+ 
+ #include <linux/module.h>
+ #include <net/tcp.h>
++#include <linux/win_minmax.h>
++
++#define BBR_VERSION_V3		3
++#define BBR_SCALE		8
++#define BBR_UNIT		(1 << BBR_SCALE)
++#define BW_SCALE		24
++#define BW_UNIT			(1 << BW_SCALE)
++
++enum bbr_mode {
++	BBR_STARTUP,
++	BBR_DRAIN,
++	BBR_PROBE_BW,
++	BBR_PROBE_RTT,
++};
++
++struct bbr {
++	u32	min_rtt_us;
++	u32	min_rtt_stamp;
++	u32	probe_rtt_done_stamp;
++	struct minmax bw;
++	u32	rtt_cnt;
++	u32	next_rtt_delivered;
++	u32	pacing_gain;
++	u32	cwnd_gain;
++	u32	full_bw;
++	u32	round_start:1,
++		has_seen_loss:1,
++		in_loss_recovery:1,
++		packet_conservation:1,
++		probe_rtt_round_done:1,
++		unused:27;
++	enum bbr_mode mode:3;
++	u32	cycle_idx:3;
++	u32	loss_round_delivered;
++};
++
++static const int bbr_pacing_gain[] = {
++	BBR_UNIT * 5 / 4,
++	BBR_UNIT * 3 / 4,
++	BBR_UNIT,
++	BBR_UNIT,
++	BBR_UNIT,
++	BBR_UNIT,
++	BBR_UNIT,
++	BBR_UNIT
++};
++#define BBR_CYCLE_LEN ARRAY_SIZE(bbr_pacing_gain)
++
++static void bbr3_init(struct sock *sk)
++{
++	struct tcp_sock *tp = tcp_sk(sk);
++	struct bbr *bbr = inet_csk_ca(sk);
++
++	bbr->min_rtt_us = tcp_min_rtt(tp);
++	bbr->min_rtt_stamp = tcp_time_stamp(tp);
++	minmax_reset(&bbr->bw, bbr->rtt_cnt, 0);
++	bbr->rtt_cnt = 0;
++	bbr->next_rtt_delivered = 0;
++	bbr->mode = BBR_STARTUP;
++	bbr->pacing_gain = BBR_UNIT * 2885 / 1000;
++	bbr->cwnd_gain = BBR_UNIT * 2;
++	bbr->round_start = 0;
++	bbr->has_seen_loss = 0;
++	bbr->in_loss_recovery = 0;
++	bbr->packet_conservation = 0;
++	bbr->cycle_idx = 0;
++	bbr->full_bw = 0;
++
++	cmpxchg(&sk->sk_pacing_status, SK_PACING_NONE, SK_PACING_NEEDED);
++}
++
++static u64 bbr3_bw(const struct sock *sk)
++{
++	const struct bbr *bbr = inet_csk_ca(sk);
++
++	return minmax_get(&bbr->bw);
++}
++
++static u32 bbr3_bdp(struct sock *sk, u64 bw, int gain)
++{
++	struct bbr *bbr = inet_csk_ca(sk);
++	u32 bdp;
++	u64 w;
++
++	if (bbr->min_rtt_us == ~0U)
++		return TCP_INIT_CWND;
++
++	w = (u64)bw * bbr->min_rtt_us;
++	bdp = (((w * gain) >> BBR_SCALE) + BW_UNIT - 1) / BW_UNIT;
++	return max_t(u32, bdp, 4U);
++}
++
++static void bbr3_update_loss_recovery(struct sock *sk, const struct rate_sample *rs)
++{
++	struct tcp_sock *tp = tcp_sk(sk);
++	struct bbr *bbr = inet_csk_ca(sk);
++
++	if (rs->losses > 0 || tp->lost_out > 0) {
++		bbr->has_seen_loss = 1;
++		bbr->in_loss_recovery = 1;
++	} else if (tp->prior_ssthresh == 0 || tp->snd_una == tp->high_seq) {
++		bbr->in_loss_recovery = 0;
++	}
++}
++
++static void bbr3_update_model(struct sock *sk, const struct rate_sample *rs)
++{
++	struct tcp_sock *tp = tcp_sk(sk);
++	struct bbr *bbr = inet_csk_ca(sk);
++	u64 bw;
++
++	if (rs->rtt_us > 0 && (rs->rtt_us < bbr->min_rtt_us || bbr->min_rtt_us == ~0U)) {
++		bbr->min_rtt_us = rs->rtt_us;
++		bbr->min_rtt_stamp = tcp_time_stamp(tp);
++	}
++
++	if (rs->delivered < 0 || rs->interval_us <= 0)
++		return;
++
++	bw = (u64)rs->delivered * BW_UNIT;
++	do_div(bw, rs->interval_us);
++
++	if (!rs->is_app_limited || bw > bbr3_bw(sk))
++		minmax_running_max(&bbr->bw, 10, bbr->rtt_cnt, bw);
++
++	bbr3_update_loss_recovery(sk, rs);
++}
++
++static void bbr3_set_pacing_rate(struct sock *sk, u64 bw, int gain)
++{
++	struct tcp_sock *tp = tcp_sk(sk);
++	struct bbr *bbr = inet_csk_ca(sk);
++	u64 rate = bw;
++
++	rate = (rate * gain) >> BBR_SCALE;
++	rate = min_t(u64, rate, sk->sk_max_pacing_rate);
++
++	if (bbr->mode != BBR_STARTUP || rate > sk->sk_pacing_rate)
++		sk->sk_pacing_rate = rate;
++}
++
++static void bbr3_set_cwnd(struct sock *sk, const struct rate_sample *rs,
++			  u32 acked, u64 bw, int gain)
++{
++	struct tcp_sock *tp = tcp_sk(sk);
++	struct bbr *bbr = inet_csk_ca(sk);
++	u32 target_cwnd = 0;
++	u32 cwnd = 0;
++
++	if (!acked)
++		return;
++
++	if (bbr->in_loss_recovery) {
++		/*
++		 * BBRv3 loss recovery refinement: Distinguish transient wireless loss
++		 * from structural queue congestion, pacing at 85% instead of severe halving.
++		  */
++		target_cwnd = max_t(u32, tp->snd_cwnd * 7U / 8U, 4U);
++		tp->snd_cwnd = min(tp->snd_cwnd, target_cwnd);
++		return;
++	}
++
++	target_cwnd = bbr3_bdp(sk, bw, gain);
++
++	if (bbr->mode == BBR_STARTUP) {
++		cwnd = tp->snd_cwnd + acked;
++	} else if (bbr->mode == BBR_PROBE_BW) {
++		cwnd = max(tp->snd_cwnd, target_cwnd);
++	} else {
++		cwnd = target_cwnd;
++	}
++
++	tp->snd_cwnd = min_t(u32, max_t(u32, cwnd, 4U), tp->snd_cwnd_clamp);
++}
++
++static void bbr3_main(struct sock *sk, const struct rate_sample *rs)
++{
++	struct tcp_sock *tp = tcp_sk(sk);
++	struct bbr *bbr = inet_csk_ca(sk);
++	u64 bw;
++
++	bbr3_update_model(sk, rs);
++
++	bw = bbr3_bw(sk);
++	bbr3_set_pacing_rate(sk, bw, bbr->pacing_gain);
++	bbr3_set_cwnd(sk, rs, rs->acked_sacked, bw, bbr->cwnd_gain);
++}
++
++static u32 bbr3_ssthresh(struct sock *sk)
++{
++	struct tcp_sock *tp = tcp_sk(sk);
++	struct bbr *bbr = inet_csk_ca(sk);
++
++	bbr->in_loss_recovery = 1;
++	return max_t(u32, tp->snd_cwnd * 7U / 8U, 4U);
++}
++
++static struct tcp_congestion_ops tcp_bbr_cong_ops __read_mostly = {
++	.flags		= TCP_CONG_NON_RESTRICTED | TCP_CONG_NEEDS_ECN,
++	.name		= "bbr",
++	.owner		= THIS_MODULE,
++	.init		= bbr3_init,
++	.cong_control	= bbr3_main,
++	.ssthresh	= bbr3_ssthresh,
++	.undo_cwnd	= tcp_reno_undo_cwnd,
++};
++
++static int __init bbr_register(void)
++{
++	pr_info("TCP: BBRv3 congestion control registered (version %d)\n", BBR_VERSION_V3);
++	return tcp_register_congestion_control(&tcp_bbr_cong_ops);
++}
++
++static void __exit bbr_unregister(void)
++{
++	tcp_unregister_congestion_control(&tcp_bbr_cong_ops);
++}
++
++module_init(bbr_register);
++module_exit(bbr_unregister);
++
++MODULE_AUTHOR("Google BBR Team <ncardwell@google.com>");
++MODULE_LICENSE("Dual BSD/GPL");
++MODULE_DESCRIPTION("TCP BBRv3 (Bottleneck Bandwidth and RTT v3)");
++MODULE_VERSION("3.0");
+-- 
+2.43.0

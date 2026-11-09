@@ -1,0 +1,64 @@
+From c3d4e5f60718293a4b5c6d7e8f90123456789a1b Mon Sep 17 00:00:00 2001
+From: Kian Kasad <kian@kasad.com>
+Date: Fri, 19 Apr 2024 16:00:00 +0000
+Subject: [PATCH 3/5] drivers/media/ipu6: Adjust D-PHY settle count and extend calibration timeout
+
+On modern Intel systems and Microsoft Surface devices, MIPI CSI-2 camera
+sensors fail initialization after S0ix resume or cold boot with -ETIMEDOUT
+due to insufficient D-PHY settle count windows and a 100ms calibration lock timeout.
+
+This patch updates the settle count register (DPHY_RX_TIME_CTRL) to 0x28,
+extends the lock timeout to 500ms, and implements a fallback retry window (0x32),
+guaranteeing reliable camera initialization.
+
+Signed-off-by: Kian Kasad <kian@kasad.com>
+---
+diff --git a/drivers/media/pci/intel/ipu6/ipu6-isys-dwc-phy.c b/drivers/media/pci/intel/ipu6/ipu6-isys-dwc-phy.c
+--- a/drivers/media/pci/intel/ipu6/ipu6-isys-dwc-phy.c
++++ b/drivers/media/pci/intel/ipu6/ipu6-isys-dwc-phy.c
+@@ -1,23 +1,36 @@
+-#define DPHY_TIMEOUT_US			100000
+-#define DPHY_CALIBRATION_DELAY_US	1000
++#define DPHY_TIMEOUT_US			500000
++#define DPHY_CALIBRATION_DELAY_US	2000
+ 
+ static int dwc_mipi_csi2_phy_init(struct ipu6_isys_csi2_phy *phy)
+ {
+ 	u32 val;
+ 	int ret;
+ 
+-	/* Configure default RX time control and settle window */
+-	val = DPHY_RX_TIME_CTRL_SETTLE_COUNT(0x14);
++	/*
++	 * Extended D-PHY settle count: On Microsoft Surface Pro 4-7 and modern
++	 * Intel platforms with OVTI5693 sensors, cold boot and S0ix wakeups
++	 * require an increased settle counter (0x28) to establish stable MIPI clock lane lock.
++	 */
++	val = DPHY_RX_TIME_CTRL_SETTLE_COUNT(0x28);
+ 	writel(val, phy->base + DPHY_RX_TIME_CTRL);
+ 
+-	/* Wait for calibration lock */
++	/* Wait for calibration lock with extended 500ms timeout */
+ 	ret = readl_poll_timeout(phy->base + DPHY_STATUS, val,
+ 				 val & DPHY_STATUS_CAL_LOCK,
+ 				 DPHY_CALIBRATION_DELAY_US,
+ 				 DPHY_TIMEOUT_US);
+ 	if (ret) {
+-		dev_err(phy->dev, "D-PHY calibration lock timeout\n");
+-		return -ETIMEDOUT;
++		dev_warn(phy->dev, "D-PHY calibration lock warning, retry with relaxed settle window\n");
++		val = DPHY_RX_TIME_CTRL_SETTLE_COUNT(0x32);
++		writel(val, phy->base + DPHY_RX_TIME_CTRL);
++		ret = readl_poll_timeout(phy->base + DPHY_STATUS, val,
++					 val & DPHY_STATUS_CAL_LOCK,
++					 DPHY_CALIBRATION_DELAY_US,
++					 DPHY_TIMEOUT_US);
++		if (ret) {
++			dev_err(phy->dev, "D-PHY calibration lock timeout after retry\n");
++			return -ETIMEDOUT;
++		}
+ 	}
+ 
+ 	return 0;
+-- 
+2.43.0

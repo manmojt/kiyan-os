@@ -1,0 +1,296 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# KIAN-OS v3 Zero-Reboot Triple-Shell Interface Switcher
+# Path: desktop/triple-shell/kian-shell-switcher
+# Description: Hot-swaps desktop shells dynamically without session restart or reboot.
+# ==============================================================================
+set -euo pipefail
+
+VERSION="3.0.0"
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/kian"
+STATE_FILE="$CONFIG_DIR/current-shell"
+
+# Determine base directory of this script to locate bundled layouts
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LAYOUT_DIR_SYSTEM="/usr/share/kian/shell-layouts"
+LAYOUT_DIR_TRIPLE="/usr/share/kian/triple-shell/layouts"
+LAYOUT_DIR_LOCAL="$SCRIPT_DIR/layouts"
+
+usage() {
+    cat <<EOF
+KIAN-OS v3 Triple-Shell Switcher (v${VERSION})
+Zero-reboot desktop personality orchestration engine.
+
+Usage:
+  $(basename "$0") [OPTIONS] [SHELL]
+  $(basename "$0") --theme <SHELL>
+
+Available Shells:
+  native, kian-native     Kian Native: Glassmorphic Dark Crystal UI (Kawase blur, neon accents)
+  fluent, win11-fluent    Windows 11 Fluent: Centered taskbar, start menu, slate cards
+  aqua, macos-aqua        macOS Aqua: Top global menu bar (28px), bottom floating dock, traffic lights
+
+Options:
+  -t, --theme <SHELL>     Switch active desktop personality to <SHELL>
+  -c, --current           Display the current active desktop personality
+  -l, --list              List all available desktop shells and specifications
+  -h, --help              Show this help message and exit
+  -v, --version           Print version information and exit
+
+Examples:
+  $(basename "$0") --theme native
+  $(basename "$0") macos-aqua
+  $(basename "$0") --current
+EOF
+    exit 0
+}
+
+list_shells() {
+    cat <<EOF
+Available KIAN-OS v3 Desktop Shells:
+--------------------------------------------------------------------------------
+1. native (kian-native)
+   - Style: Glassmorphic Dark Crystal UI
+   - Layout: Centered floating bottom dock-panel (56px)
+   - Accents: Neon Cyan (#00F0FF) / Neon Purple (#A855F7) on Obsidian Dark
+   - Window Decoration: Aurorae Dark Crystal (Right buttons: Minimize, Maximize, Close)
+   - Kvantum Theme: KianGlass (Dual-Kawase Blur, Translucent Surfaces)
+
+2. fluent (win11-fluent)
+   - Style: Windows 11 Modern Fluent Design
+   - Layout: Full-width bottom taskbar (48px) with centered Start Menu & Icon Tasks
+   - Accents: Microsoft Fluent Blue (#0078D4) on Slate Grey (#202020)
+   - Window Decoration: Breeze Fluent (Right buttons: Minimize, Maximize, Close)
+   - Kvantum Theme: FluentDark
+
+3. aqua (macos-aqua)
+   - Style: Cupertino Aqua / Sequoia Frosted Glass
+   - Layout: Dual layout - Top Global Menu Bar (28px) + Bottom Floating Dock (64px)
+   - Accents: Traffic Light Controls (Red #FF5F56, Yellow #FFBD2E, Green #27C93F)
+   - Window Decoration: Aurorae Aqua (Left buttons: Close, Minimize, Maximize)
+   - Kvantum Theme: KianAquaGlass
+--------------------------------------------------------------------------------
+EOF
+    exit 0
+}
+
+get_current_shell() {
+    if [[ -s "$STATE_FILE" ]]; then
+        local current
+        current="$(tr -d '[:space:]' < "$STATE_FILE" 2>/dev/null || true)"
+        if [[ -n "$current" ]]; then
+            echo "$current"
+            exit 0
+        fi
+    fi
+    echo "kian-native (default)"
+    exit 0
+}
+
+# DBus dispatch helper handling qdbus, qdbus-qt5, or dbus-send
+dbus_call() {
+    local service="$1"
+    local path="$2"
+    local method="$3"
+    shift 3
+
+    if command -v qdbus >/dev/null 2>&1; then
+        qdbus "$service" "$path" "$method" "$@" 2>/dev/null || true
+    elif command -v qdbus-qt5 >/dev/null 2>&1; then
+        qdbus-qt5 "$service" "$path" "$method" "$@" 2>/dev/null || true
+    elif command -v dbus-send >/dev/null 2>&1; then
+        dbus-send --session --dest="$service" --type=method_call "$path" "$method" "$@" 2>/dev/null || true
+    fi
+}
+
+kwrite_config() {
+    local file="$1"
+    local group="$2"
+    local key="$3"
+    local value="$4"
+
+    if command -v kwriteconfig5 >/dev/null 2>&1; then
+        kwriteconfig5 --file "$file" --group "$group" --key "$key" "$value" 2>/dev/null || true
+    elif command -v kwriteconfig6 >/dev/null 2>&1; then
+        kwriteconfig6 --file "$file" --group "$group" --key "$key" "$value" 2>/dev/null || true
+    else
+        # Direct file configuration fallback for CI/headless verification
+        local target_file="${XDG_CONFIG_HOME:-$HOME/.config}/$file"
+        mkdir -p "$(dirname "$target_file")"
+        if [[ ! -f "$target_file" ]] || ! grep -q "^\[$group\]" "$target_file" 2>/dev/null; then
+            echo -e "\n[$group]\n$key=$value" >> "$target_file"
+        else
+            if grep -q "^$key=" "$target_file" 2>/dev/null; then
+                sed -i "/^\[$group\]/,/^\[/ s|^$key=.*|$key=$value|" "$target_file" 2>/dev/null
+            else
+                sed -i "/^\[$group\]/a $key=$value" "$target_file" 2>/dev/null
+            fi
+        fi
+    fi
+}
+
+# Parse Command Line Arguments
+TARGET_SHELL=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -h|--help)
+            usage
+            ;;
+        -v|--version)
+            echo "kian-shell-switcher v${VERSION}"
+            exit 0
+            ;;
+        -l|--list)
+            list_shells
+            ;;
+        -c|--current)
+            get_current_shell
+            ;;
+        -t|--theme)
+            if [[ -n "${2:-}" ]]; then
+                TARGET_SHELL="$2"
+                shift 2
+            else
+                echo "Error: --theme requires a shell name argument." >&2
+                exit 1
+            fi
+            ;;
+        -*)
+            echo "Error: Unknown option '$1'" >&2
+            echo "Run '$(basename "$0") --help' for usage." >&2
+            exit 1
+            ;;
+        *)
+            if [[ -z "$TARGET_SHELL" ]]; then
+                TARGET_SHELL="$1"
+                shift
+            else
+                echo "Error: Unexpected argument '$1'" >&2
+                exit 1
+            fi
+            ;;
+    esac
+done
+
+if [[ -z "$TARGET_SHELL" ]]; then
+    echo "Error: No shell specified." >&2
+    echo "Run '$(basename "$0") --help' for available shells." >&2
+    exit 1
+fi
+
+# Normalize shell target identifiers
+CANONICAL_NAME=""
+case "$TARGET_SHELL" in
+    native|kian-native|glass|dark-crystal)
+        CANONICAL_NAME="kian-native"
+        DISPLAY_NAME="Kian Native (Glassmorphic Dark Crystal)"
+        COLOR_SCHEME="KianDarkCrystal"
+        ICON_THEME="Kian-Neon-Icons"
+        KVANTUM_THEME="KianGlass"
+        DECO_PLUGIN="org.kde.kdecoration2"
+        DECO_THEME="__aurorae__svg__KianDarkCrystalDeco"
+        BUTTONS_LEFT=""
+        BUTTONS_RIGHT="IAX"
+        LAYOUT_FILE_NAME="kian-native.js"
+        ;;
+    fluent|win11|win11-fluent|windows|windows-fluent)
+        CANONICAL_NAME="win11-fluent"
+        DISPLAY_NAME="Windows 11 Fluent"
+        COLOR_SCHEME="FluentDark"
+        ICON_THEME="Fluent-dark"
+        KVANTUM_THEME="FluentDark"
+        DECO_PLUGIN="org.kde.breeze"
+        DECO_THEME="Breeze"
+        BUTTONS_LEFT=""
+        BUTTONS_RIGHT="IAX"
+        LAYOUT_FILE_NAME="windows-fluent.js"
+        ;;
+    aqua|macos|macos-aqua|mac)
+        CANONICAL_NAME="macos-aqua"
+        DISPLAY_NAME="macOS Aqua (Cupertino Glass)"
+        COLOR_SCHEME="WhiteSurDark"
+        ICON_THEME="WhiteSur-dark"
+        KVANTUM_THEME="KianAquaGlass"
+        DECO_PLUGIN="org.kde.kdecoration2"
+        DECO_THEME="__aurorae__svg__KianAquaDeco"
+        BUTTONS_LEFT="XIA"
+        BUTTONS_RIGHT=""
+        LAYOUT_FILE_NAME="macos-aqua.js"
+        ;;
+    *)
+        echo "Error: Unknown shell target '$TARGET_SHELL'" >&2
+        echo "Available shells: native, fluent, aqua" >&2
+        exit 1
+        ;;
+esac
+
+echo "======================================================================"
+echo " ==> KIAN-OS Triple-Shell: Activating $DISPLAY_NAME..."
+echo "======================================================================"
+
+# Locate layout script
+LAYOUT_SCRIPT=""
+if [[ -f "$LAYOUT_DIR_SYSTEM/$LAYOUT_FILE_NAME" ]]; then
+    LAYOUT_SCRIPT="$LAYOUT_DIR_SYSTEM/$LAYOUT_FILE_NAME"
+elif [[ -f "$LAYOUT_DIR_TRIPLE/$LAYOUT_FILE_NAME" ]]; then
+    LAYOUT_SCRIPT="$LAYOUT_DIR_TRIPLE/$LAYOUT_FILE_NAME"
+elif [[ -f "$LAYOUT_DIR_LOCAL/$LAYOUT_FILE_NAME" ]]; then
+    LAYOUT_SCRIPT="$LAYOUT_DIR_LOCAL/$LAYOUT_FILE_NAME"
+else
+    echo "Warning: Layout script $LAYOUT_FILE_NAME not found in standard paths." >&2
+fi
+
+# Step 1: Update KWin Window Decoration & Button Placement
+echo "[1/6] Configuring KWin decoration ($DECO_PLUGIN / $DECO_THEME)..."
+kwrite_config "kwinrc" "org.kde.kdecoration2" "pluginName" "$DECO_PLUGIN"
+kwrite_config "kwinrc" "org.kde.kdecoration2" "theme" "$DECO_THEME"
+kwrite_config "kwinrc" "org.kde.kdecoration2" "ButtonsOnLeft" "$BUTTONS_LEFT"
+kwrite_config "kwinrc" "org.kde.kdecoration2" "ButtonsOnRight" "$BUTTONS_RIGHT"
+
+# Step 2: Update Kvantum Theme Engine
+echo "[2/6] Configuring Kvantum theme ($KVANTUM_THEME)..."
+if command -v kvantummanager >/dev/null 2>&1; then
+    kvantummanager --set "$KVANTUM_THEME" >/dev/null 2>&1 || true
+else
+    KVANTUM_CONF="${XDG_CONFIG_HOME:-$HOME/.config}/Kvantum/kvantum.kvconfig"
+    mkdir -p "$(dirname "$KVANTUM_CONF")"
+    cat <<EOF > "$KVANTUM_CONF"
+[General]
+theme=$KVANTUM_THEME
+EOF
+fi
+
+# Step 3: Update Plasma Color Scheme & Icon Theme
+echo "[3/6] Applying color scheme ($COLOR_SCHEME) & icon theme ($ICON_THEME)..."
+if command -v plasma-apply-colorscheme >/dev/null 2>&1; then
+    plasma-apply-colorscheme "$COLOR_SCHEME" >/dev/null 2>&1 || true
+fi
+kwrite_config "kdeglobals" "Icons" "Theme" "$ICON_THEME"
+kwrite_config "kdeglobals" "General" "ColorScheme" "$COLOR_SCHEME"
+
+# Step 4: Hot-Reload KWin Compositor Window Decorations (Live, Tear-Free)
+echo "[4/6] Signaling KWin compositor reconfigure via DBus..."
+dbus_call "org.kde.KWin" "/KWin" "reconfigure"
+
+# Step 5: Execute Dynamic Panel Layout Swap via Plasma Scripting API
+echo "[5/6] Hot-swapping Plasma panels via evaluateScript..."
+if [[ -n "$LAYOUT_SCRIPT" && -f "$LAYOUT_SCRIPT" ]]; then
+    SCRIPT_CONTENT=$(cat "$LAYOUT_SCRIPT")
+    dbus_call "org.kde.plasmashell" "/PlasmaShell" "org.kde.PlasmaShell.evaluateScript" "$SCRIPT_CONTENT"
+fi
+
+# Step 6: Broadcast Live Notification to Running Qt/GTK Applications
+echo "[6/6] Broadcasting theme change event to running client windows..."
+dbus_call "org.kde.KGlobalSettings" "/KGlobalSettings" "notifyChange" 0 0
+
+# Record active state atomically
+mkdir -p "$CONFIG_DIR"
+TMP_STATE="${STATE_FILE}.tmp.$$"
+echo "$CANONICAL_NAME" > "$TMP_STATE"
+mv -f "$TMP_STATE" "$STATE_FILE"
+
+echo "======================================================================"
+echo " ==> Success: Shell switched to $CANONICAL_NAME without session restart."
+echo "======================================================================"
+exit 0

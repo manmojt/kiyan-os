@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# KIAN-OS v3: Dynamic GRUB Snapshot Menu Generator
+# Path: scripts/41_kian_snapshots (deployed to /etc/grub.d/41_kian_snapshots)
+# Description: Dynamically detects Btrfs snapshots in /.snapshots and generates
+#              GRUB recovery boot entries with ephemeral OverlayFS parameters.
+# ==============================================================================
+set -euo pipefail
+
+SNAP_DIR="${KIAN_SNAPSHOTS_DIR:-/.snapshots}"
+
+# Determine filesystem UUID for root
+get_btrfs_uuid() {
+    local uuid=""
+    if [[ -n "${KIAN_TEST_FS_UUID:-}" ]]; then
+        echo "${KIAN_TEST_FS_UUID}"
+        return 0
+    fi
+
+    if command -v grub-probe &>/dev/null; then
+        uuid=$(grub-probe --target=fs_uuid / 2>/dev/null || true)
+    fi
+
+    if [[ -z "$uuid" ]] && command -v findmnt &>/dev/null; then
+        uuid=$(findmnt -n -o UUID / 2>/dev/null || true)
+    fi
+
+    if [[ -z "$uuid" && -f /etc/fstab ]]; then
+        uuid=$(awk '$2 == "/" && $3 == "btrfs" { if ($1 ~ /^UUID=/) { split($1, a, "="); print a[2] } }' /etc/fstab 2>/dev/null || true)
+    fi
+
+    echo "$uuid"
+}
+
+BTRFS_UUID=$(get_btrfs_uuid)
+
+# If not running on Btrfs or no UUID detectable, skip menu generation
+if [[ -z "${BTRFS_UUID}" ]]; then
+    exit 0
+fi
+
+# If snapshots directory does not exist, skip
+if [[ ! -d "${SNAP_DIR}" ]]; then
+    exit 0
+fi
+
+# Find snapshots matching snap_* or any directory with metadata
+SNAPSHOTS=()
+while IFS= read -r -d '' snap_entry; do
+    [[ -n "$snap_entry" ]] && SNAPSHOTS+=("$snap_entry")
+done < <(find "${SNAP_DIR}" -mindepth 1 -maxdepth 1 -type d -name "snap_*" -print0 2>/dev/null | sort -z -Vr || true)
+
+if [[ ${#SNAPSHOTS[@]} -eq 0 ]]; then
+    exit 0
+fi
+
+# Output GRUB configuration block
+cat << 'GRUB_HEAD'
+# ==============================================================================
+# Dynamic KIAN-OS v3 Btrfs Snapshots Submenu
+# ==============================================================================
+submenu ">> KIAN-OS v3 Snapshot Rollback & Recovery <<" --class recovery --class btrfs {
+GRUB_HEAD
+
+for snap in "${SNAPSHOTS[@]}"; do
+    SNAP_NAME=$(basename "${snap}")
+    META_FILE="${snap}/.kian_snapshot_meta.json"
+
+    SNAP_TYPE="snap"
+    TIMESTAMP="Unknown Date"
+    KERNEL="6.8.0-31-kian-v3"
+    TRIGGER="manual"
+
+    if [[ -f "${META_FILE}" ]]; then
+        TIMESTAMP=$(grep -o '"timestamp": *"[^"]*"' "${META_FILE}" | cut -d'"' -f4 || echo "Unknown Date")
+        KERNEL=$(grep -o '"kernel": *"[^"]*"' "${META_FILE}" | cut -d'"' -f4 || echo "6.8.0-31-kian-v3")
+        SNAP_TYPE=$(grep -o '"type": *"[^"]*"' "${META_FILE}" | cut -d'"' -f4 || echo "snap")
+        TRIGGER=$(grep -o '"trigger": *"[^"]*"' "${META_FILE}" | cut -d'"' -f4 || echo "system")
+    fi
+
+    # Escape quotes in metadata variables for safe GRUB parser syntax
+    SAFE_SNAP_NAME="${SNAP_NAME//\"/\\\"}"
+    SAFE_TIMESTAMP="${TIMESTAMP//\"/\\\"}"
+    SAFE_KERNEL="${KERNEL//\"/\\\"}"
+
+    ENTRY_TITLE="[${SNAP_TYPE^^}] ${SAFE_SNAP_NAME} (${SAFE_TIMESTAMP}) - Kernel: ${SAFE_KERNEL} (Safe Ephemeral Overlay)"
+
+    # Determine kernel and initrd paths (support versioned and unversioned)
+    VMLINUZ_PATH="/@snapshots/${SNAP_NAME}/boot/vmlinuz-${KERNEL}"
+    INITRD_PATH="/@snapshots/${SNAP_NAME}/boot/initrd.img-${KERNEL}"
+
+    if [[ -f "${snap}/boot/vmlinuz" && ! -f "${snap}/boot/vmlinuz-${KERNEL}" ]]; then
+        VMLINUZ_PATH="/@snapshots/${SNAP_NAME}/boot/vmlinuz"
+    fi
+    if [[ -f "${snap}/boot/initrd.img" && ! -f "${snap}/boot/initrd.img-${KERNEL}" ]]; then
+        INITRD_PATH="/@snapshots/${SNAP_NAME}/boot/initrd.img"
+    fi
+
+    cat << GRUB_ENTRY
+    menuentry "${ENTRY_TITLE}" --class btrfs-snapshot --class recovery {
+        insmod btrfs
+        insmod part_gpt
+        insmod all_video
+        insmod font
+        insmod gfxterm
+        search --no-floppy --fs-uuid --set=root ${BTRFS_UUID}
+        echo "Loading KIAN-OS snapshot: ${SAFE_SNAP_NAME} via Ephemeral OverlayFS..."
+        linux ${VMLINUZ_PATH} root=UUID=${BTRFS_UUID} rootflags=subvol=@snapshots/${SNAP_NAME} ro kian.overlay=1 quiet splash
+        initrd ${INITRD_PATH}
+    }
+GRUB_ENTRY
+done
+
+cat << 'GRUB_TAIL'
+}
+# ==============================================================================
+GRUB_TAIL
+
+exit 0

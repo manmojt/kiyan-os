@@ -1,0 +1,25 @@
+[Unit]
+Description=LocalSend Cross-Platform Peer-to-Peer File Transfer Engine
+Documentation=https://localsend.org https://github.com/localsend/localsend
+After=network.target sound.target
+Wants=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/localsend --hidden
+Restart=on-failure
+RestartSec=5
+KillMode=process
+
+# Wayland / Graphical session environment pass-through
+Environment="DISPLAY=:0" "WAYLAND_DISPLAY=wayland-0" "XDG_SESSION_TYPE=wayland" "XDG_CURRENT_DESKTOP=KDE"
+
+# Process & Sandbox Restrictions
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/Downloads
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target graphical-session.target
