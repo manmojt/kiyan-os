@@ -109,10 +109,10 @@ if [[ ! -f "${TARGET_SRC}/Makefile" ]]; then
     else
         log_info "Cloning Ubuntu Noble kernel tree (branch: ${DISTRO_CODENAME})..."
         mkdir -p "$(dirname "${TARGET_SRC}")"
-        log_info "Cloning Linux 6.8 baseline from GitHub..."
-        git clone --depth 1 --branch v6.8 https://github.com/torvalds/linux.git "${TARGET_SRC}" || {
-            log_warn "GitHub mirror failed; attempting kernel.org shallow clone..."
-            git clone --depth 1 --branch v6.8 https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git "${TARGET_SRC}"
+        log_info "Cloning Linux 6.8.12 stable tree (exact upstream target for BORE & NTSync)..."
+        git clone --depth 1 --branch v6.8.12 https://github.com/gregkh/linux.git "${TARGET_SRC}" || {
+            log_warn "gregkh mirror failed; attempting kernel.org stable mirror..."
+            git clone --depth 1 --branch v6.8.12 https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git "${TARGET_SRC}"
         }
     fi
 fi
@@ -153,13 +153,16 @@ for patch_file in "${PATCH_SERIES[@]}"; do
     if git apply --check "${patch_path}" &>/dev/null; then
         git apply "${patch_path}"
         log_success "Applied patch cleanly: ${patch_file}"
+    elif patch -p1 -N --dry-run < "${patch_path}" &>/dev/null; then
+        patch -p1 -N < "${patch_path}"
+        log_success "Applied patch with patch utility: ${patch_file}"
     else
-        log_warn "Dry apply failed; attempting patch with 3-way merge fallback..."
-        git apply -3 "${patch_path}" || {
+        log_warn "Direct apply failed; attempting patch with 3-way merge fallback..."
+        git apply -3 "${patch_path}" || patch -p1 -N < "${patch_path}" || {
             log_error "Failed to apply patch: ${patch_file}"
             exit 1
         }
-        log_success "Applied patch with 3-way merge: ${patch_file}"
+        log_success "Applied patch with fallback: ${patch_file}"
     fi
 done
 
