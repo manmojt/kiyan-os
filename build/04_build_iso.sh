@@ -247,12 +247,15 @@ if [[ "${DRY_RUN}" == "1" ]]; then
     log_info "[DRY-RUN] Simulating mkfs.vfat and mcopy for efi.img..."
     touch "${EFI_IMG}"
 else
-    dd if=/dev/zero of="${EFI_IMG}" bs=1M count=8 status=none
+    dd if=/dev/zero of="${EFI_IMG}" bs=1M count=16 status=none
     mkfs.vfat -F 16 -n "KIAN_EFI" "${EFI_IMG}" >/dev/null
 
     if command -v mmd &>/dev/null && command -v mcopy &>/dev/null; then
-        mmd -i "${EFI_IMG}" ::/EFI ::/EFI/BOOT 2>/dev/null || true
-        mcopy -i "${EFI_IMG}" -s "${TARGET_TREE}/EFI/BOOT"/* ::/EFI/BOOT/ 2>/dev/null || true
+        mmd -i "${EFI_IMG}" ::/EFI 2>/dev/null || true
+        mmd -i "${EFI_IMG}" ::/EFI/BOOT 2>/dev/null || true
+        if compgen -G "${TARGET_TREE}/EFI/BOOT/*" > /dev/null; then
+            mcopy -i "${EFI_IMG}" -s "${TARGET_TREE}/EFI/BOOT"/* ::/EFI/BOOT/ 2>/dev/null || true
+        fi
     else
         # Fallback to loopback mount
         EFI_TMP_MNT=$(mktemp -d /tmp/kian-efi-mnt-XXXXXX)
