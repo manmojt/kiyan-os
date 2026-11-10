@@ -15,15 +15,17 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 echo "=== Initializing Kian-OS v3 Clean-Slate Production ISO Pipeline ==="
 mkdir -p "${PROJECT_ROOT}/output"
-mkdir -p "${PROJECT_ROOT}/build/kernel_pkgs"
+mkdir -p "${PROJECT_ROOT}/build/kernel_pkgs" "${PROJECT_ROOT}/build/out/kernel_pkgs"
 
 # Download verified superkernel v3 packages if missing
-if ! ls "${PROJECT_ROOT}/build/kernel_pkgs"/linux-image*kian-v3*.deb &>/dev/null; then
+if ! ls "${PROJECT_ROOT}/build/kernel_pkgs"/linux-image*.deb &>/dev/null && ! ls "${PROJECT_ROOT}/build/out/kernel_pkgs"/linux-image*.deb &>/dev/null; then
     echo ":: Fetching verified linux-kian v3 superkernel deb packages from GitHub Release 14..."
     if command -v gh &>/dev/null; then
         gh release download linux-kian-v3-build-14 -R manmojt/kiyan-os -D "${PROJECT_ROOT}/build/kernel_pkgs/" -p '*.deb' || true
     fi
 fi
+# Mirror packages across both staging trees
+cp -u "${PROJECT_ROOT}/build/kernel_pkgs"/*.deb "${PROJECT_ROOT}/build/out/kernel_pkgs/" 2>/dev/null || true
 
 # Execute master build orchestrator with pre-compiled kernel packages
 "${PROJECT_ROOT}/build/build_all.sh" --skip-kernel "$@"

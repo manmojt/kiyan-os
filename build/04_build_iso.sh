@@ -112,12 +112,27 @@ LIVE_INITRD=""
 LIVE_KERNEL=$(find "${TARGET_ROOTFS}/boot" -maxdepth 1 -name "vmlinuz*kian-v3*" 2>/dev/null | sort -V | tail -n 1 || true)
 LIVE_INITRD=$(find "${TARGET_ROOTFS}/boot" -maxdepth 1 -name "initrd.img*kian-v3*" 2>/dev/null | sort -V | tail -n 1 || true)
 
-# Preference 2: generic stock kernel
+# Ensure initramfs is generated if vmlinuz-kian-v3 exists but initrd was pending
+if [[ -n "${LIVE_KERNEL}" && ( -z "${LIVE_INITRD}" || ! -f "${LIVE_INITRD}" ) ]]; then
+    KVER=$(basename "${LIVE_KERNEL}" | sed "s/^vmlinuz-//")
+    log_info "Generating dedicated initramfs for ${KVER}..."
+    chroot "${TARGET_ROOTFS}" update-initramfs -c -k "${KVER}" 2>/dev/null || true
+    LIVE_INITRD=$(find "${TARGET_ROOTFS}/boot" -maxdepth 1 -name "initrd.img*${KVER}*" 2>/dev/null | sort -V | tail -n 1 || true)
+fi
+
+# Preference 2: generic stock kernel (fallback only)
 if [[ -z "${LIVE_KERNEL}" || ! -f "${LIVE_KERNEL}" ]]; then
+    log_warn "linux-kian v3 not found, falling back to generic kernel..."
     LIVE_KERNEL=$(find "${TARGET_ROOTFS}/boot" -maxdepth 1 -name "vmlinuz*" 2>/dev/null | sort -V | tail -n 1 || true)
 fi
 if [[ -z "${LIVE_INITRD}" || ! -f "${LIVE_INITRD}" ]]; then
     LIVE_INITRD=$(find "${TARGET_ROOTFS}/boot" -maxdepth 1 -name "initrd.img*" 2>/dev/null | sort -V | tail -n 1 || true)
+fi
+
+if [[ "${LIVE_KERNEL}" == *"kian-v3"* ]]; then
+    log_success ":: VERIFIED linux-kian v3 superkernel active: $(basename "${LIVE_KERNEL}")"
+else
+    log_warn ":: WARNING: Selected kernel is not linux-kian v3: $(basename "${LIVE_KERNEL}")"
 fi
 
 if [[ -n "${LIVE_KERNEL}" && -f "${LIVE_KERNEL}" ]]; then
@@ -180,12 +195,12 @@ insmod font
 insmod gfxterm
 
 menuentry "Try or Install KIAN-OS v3 (linux-kian v3, Pure Wayland)" --class kian --class os {
-    linux /casper/vmlinuz boot=casper quiet splash acpi_osi="Windows 2020" ---
+    linux /casper/vmlinuz boot=casper console=tty0 console=ttyS0,115200 quiet splash acpi_osi="Windows 2020" ---
     initrd /casper/initrd
 }
 
 menuentry "Try or Install KIAN-OS v3 (Safe Graphics Mode - Nomodeset)" --class recovery --class os {
-    linux /casper/vmlinuz boot=casper nomodeset quiet splash ---
+    linux /casper/vmlinuz boot=casper nomodeset console=tty0 console=ttyS0,115200 quiet splash ---
     initrd /casper/initrd
 }
 
@@ -302,12 +317,12 @@ MENU TITLE KIAN-OS v3 (Noble Numbat 24.04 LTS)
 LABEL kian
   MENU LABEL Try or Install KIAN-OS v3 (Pure Wayland)
   KERNEL /casper/vmlinuz
-  APPEND initrd=/casper/initrd boot=casper quiet splash acpi_osi="Windows 2020" ---
+  APPEND initrd=/casper/initrd boot=casper console=tty0 console=ttyS0,115200 quiet splash acpi_osi="Windows 2020" ---
 
 LABEL safe
   MENU LABEL Try or Install KIAN-OS v3 (Safe Graphics Mode)
   KERNEL /casper/vmlinuz
-  APPEND initrd=/casper/initrd boot=casper nomodeset quiet splash ---
+  APPEND initrd=/casper/initrd boot=casper nomodeset console=tty0 console=ttyS0,115200 quiet splash ---
 EOF
 
 # ------------------------------------------------------------------------------
@@ -347,7 +362,7 @@ fi
 
 # Attach MBR hybrid partition table if isohdpfx exists
 if [[ -n "${ISOHDPFX}" && -f "${ISOHDPFX}" ]]; then
-    XORRISO_ARGS+=(-isohybrid-mbr "${ISOHDPFX}")
+    XORRISO_ARGS+=(-isohybrid-mbr "${ISOHDPFX}" -partition_offset 16)
 fi
 
 # Attach UEFI El Torito alt boot image if efi.img exists

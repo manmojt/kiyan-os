@@ -164,9 +164,17 @@ fi
 
 # Stage Kernel Packages into Chroot
 mkdir -p "${TARGET_ROOTFS}/tmp/kian_pkgs"
-if ls "${KERNEL_PKGS_DIR}"/*.deb &>/dev/null; then
-    cp "${KERNEL_PKGS_DIR}"/*.deb "${TARGET_ROOTFS}/tmp/kian_pkgs/"
-    log_info "Staged linux-kian v3 packages into chroot /tmp/kian_pkgs/."
+FOUND_PKGS=0
+for pkg_dir in "${KERNEL_PKGS_DIR}" "${PROJECT_ROOT}/build/kernel_pkgs" "${PROJECT_ROOT}/build/out/kernel_pkgs"; do
+    if compgen -G "${pkg_dir}/*.deb" > /dev/null; then
+        cp -u "${pkg_dir}"/*.deb "${TARGET_ROOTFS}/tmp/kian_pkgs/"
+        log_success "Staged linux-kian v3 packages from ${pkg_dir} into chroot /tmp/kian_pkgs/."
+        FOUND_PKGS=1
+        break
+    fi
+done
+if [[ $FOUND_PKGS -eq 0 ]]; then
+    log_warn "No pre-compiled kernel deb packages found in ${KERNEL_PKGS_DIR}!"
 fi
 
 # ------------------------------------------------------------------------------
@@ -196,9 +204,16 @@ apt-get install -y --no-install-recommends \
     linux-image-generic linux-headers-generic
 
 # Install Kian v3 Kernel Debs if staged
-if ls /tmp/kian_pkgs/linux-image*kian-v3*.deb &>/dev/null; then
-    echo ":: Installing linux-kian v3 kernel packages inside chroot..."
+if compgen -G "/tmp/kian_pkgs/linux-image*.deb" > /dev/null; then
+    echo ":: Installing linux-kian v3 superkernel packages inside chroot..."
     dpkg -i /tmp/kian_pkgs/*.deb || apt-get install -f -y
+    KVER=$(ls /lib/modules/ 2>/dev/null | grep "kian-v3" | head -n 1 || true)
+    if [[ -n "${KVER}" ]]; then
+        echo ":: Generating dedicated initramfs for superkernel ${KVER}..."
+        update-initramfs -c -k "${KVER}" || update-initramfs -u -k "${KVER}" || true
+    fi
+else
+    echo ":: [WARN] No linux-image deb packages found in /tmp/kian_pkgs/"
 fi
 rm -rf /tmp/kian_pkgs
 

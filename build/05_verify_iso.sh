@@ -72,7 +72,7 @@ log_info "Target ISO Path: ${TARGET_ISO}"
 log_info "Detected Size:   ${ISO_HR} (${ISO_BYTES} bytes)"
 
 PASSED_CHECKS=0
-TOTAL_CHECKS=6
+TOTAL_CHECKS=7
 
 if [[ $ISO_BYTES -gt 0 ]]; then
     log_success "[PASS] ISO file exists and is non-empty."
@@ -200,7 +200,42 @@ else
 fi
 
 # ------------------------------------------------------------------------------
-# 7. Summary & Bootability Confidence Assessment
+# 7. Superkernel linux-kian v3 Verification inside Live Payload
+# ------------------------------------------------------------------------------
+log_step "7. Verifying Superkernel linux-kian v3 in Casper Payload"
+
+SUPERKERNEL_OK=0
+if [[ "${DRY_RUN}" == "1" ]]; then
+    log_info "[DRY-RUN] Simulating superkernel verification..."
+    SUPERKERNEL_OK=1
+elif command -v 7z &>/dev/null; then
+    TMP_KDIR=$(mktemp -d /tmp/kian-kchk-XXXXXX)
+    if 7z e "${TARGET_ISO}" "casper/vmlinuz" -o"${TMP_KDIR}" &>/dev/null; then
+        if strings "${TMP_KDIR}/vmlinuz" 2>/dev/null | grep -qi "kian-v3"; then
+            log_success "[PASS] Verified linux-kian v3 superkernel binary inside /casper/vmlinuz!"
+            SUPERKERNEL_OK=1
+        fi
+    fi
+    rm -rf "${TMP_KDIR}"
+elif command -v xorriso &>/dev/null; then
+    TMP_KDIR=$(mktemp -d /tmp/kian-kchk-XXXXXX)
+    if xorriso -osirx on -indev "${TARGET_ISO}" -extract /casper/vmlinuz "${TMP_KDIR}/vmlinuz" 2>/dev/null; then
+        if strings "${TMP_KDIR}/vmlinuz" 2>/dev/null | grep -qi "kian-v3"; then
+            log_success "[PASS] Verified linux-kian v3 superkernel binary inside /casper/vmlinuz!"
+            SUPERKERNEL_OK=1
+        fi
+    fi
+    rm -rf "${TMP_KDIR}"
+fi
+
+if [[ $SUPERKERNEL_OK -eq 1 ]]; then
+    PASSED_CHECKS=$((PASSED_CHECKS + 1))
+else
+    log_warn "[WARN] linux-kian v3 signature could not be verified inside live vmlinuz."
+fi
+
+# ------------------------------------------------------------------------------
+# 8. Summary & Bootability Confidence Assessment
 # ------------------------------------------------------------------------------
 CONFIDENCE=$(( (PASSED_CHECKS * 100) / TOTAL_CHECKS ))
 
