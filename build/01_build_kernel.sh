@@ -187,13 +187,13 @@ if [[ -f "${TARGET_SRC}/scripts/config" && "${DRY_RUN}" != "1" ]]; then
     "${TARGET_SRC}/scripts/config" --set-val CONFIG_MODULE_SIG y
     "${TARGET_SRC}/scripts/config" --set-val CONFIG_MODULE_SIG_ALL y
     "${TARGET_SRC}/scripts/config" --set-val CONFIG_MODULE_SIG_SHA512 y
-    if [[ -s "${KEYS_DIR}/kian_mok.priv" ]]; then
-        log_info "Using verified Kian RSA-4096 MOK key for module signing..."
-        "${TARGET_SRC}/scripts/config" --set-str CONFIG_MODULE_SIG_KEY "${KEYS_DIR}/kian_mok.priv"
-    else
-        log_warn "MOK key missing or empty; using kernel auto-generated signing key..."
-        "${TARGET_SRC}/scripts/config" --set-str CONFIG_MODULE_SIG_KEY "certs/signing_key.pem"
+    mkdir -p "${TARGET_SRC}/certs"
+    if [[ -s "${KEYS_DIR}/kian_mok.priv" && -s "${KEYS_DIR}/kian_mok.pem" ]]; then
+        log_info "Embedding verified Kian RSA-4096 MOK keypair into certs/signing_key.pem..."
+        cat "${KEYS_DIR}/kian_mok.priv" "${KEYS_DIR}/kian_mok.pem" > "${TARGET_SRC}/certs/signing_key.pem"
     fi
+    "${TARGET_SRC}/scripts/config" --set-str CONFIG_MODULE_SIG_KEY "certs/signing_key.pem"
+
     "${TARGET_SRC}/scripts/config" --set-str CONFIG_SYSTEM_TRUSTED_KEYS ""
     "${TARGET_SRC}/scripts/config" --set-str CONFIG_SYSTEM_REVOCATION_KEYS ""
 
