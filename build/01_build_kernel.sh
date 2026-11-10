@@ -197,12 +197,7 @@ if [[ -f "${TARGET_SRC}/scripts/config" && "${DRY_RUN}" != "1" ]]; then
     "${TARGET_SRC}/scripts/config" --set-str CONFIG_SYSTEM_TRUSTED_KEYS ""
     "${TARGET_SRC}/scripts/config" --set-str CONFIG_SYSTEM_REVOCATION_KEYS ""
 
-    log_info "Reconciling configuration defaults (# Ensure x86 EFI libstub does not fail with C23 keyword collisions on modern GCC
-    if [[ -f "${TARGET_SRC}/drivers/firmware/efi/libstub/Makefile" ]]; then
-        sed -i "s/cflags-\$(CONFIG_X86)\s*+=/cflags-\$(CONFIG_X86) += -std=gnu11 /" "${TARGET_SRC}/drivers/firmware/efi/libstub/Makefile" || true
-    fi
-
-    make olddefconfig)..."
+    log_info "Reconciling configuration defaults (make olddefconfig)..."
     # Ensure x86 EFI libstub does not fail with C23 keyword collisions on modern GCC
     if [[ -f "${TARGET_SRC}/drivers/firmware/efi/libstub/Makefile" ]]; then
         sed -i "s/cflags-\$(CONFIG_X86)\s*+=/cflags-\$(CONFIG_X86) += -std=gnu11 /" "${TARGET_SRC}/drivers/firmware/efi/libstub/Makefile" || true
