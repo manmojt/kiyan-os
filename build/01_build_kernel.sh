@@ -231,8 +231,8 @@ elif [[ "${DRY_RUN}" == "1" ]]; then
     touch "${KERNEL_PKGS_DIR}/linux-headers-${KERNEL_VERSION}_${KERNEL_PKG_VERSION}_amd64.deb"
     log_info "[DRY-RUN] Staged mock packages in ${KERNEL_PKGS_DIR}."
 else
-    local cc_cmd="gcc"
-    local hostcc_cmd="gcc"
+    cc_cmd="gcc"
+    hostcc_cmd="gcc"
     if command -v ccache &>/dev/null; then
         cc_cmd="ccache gcc"
         hostcc_cmd="ccache gcc"
