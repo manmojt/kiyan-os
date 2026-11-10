@@ -231,8 +231,18 @@ elif [[ "${DRY_RUN}" == "1" ]]; then
     touch "${KERNEL_PKGS_DIR}/linux-headers-${KERNEL_VERSION}_${KERNEL_PKG_VERSION}_amd64.deb"
     log_info "[DRY-RUN] Staged mock packages in ${KERNEL_PKGS_DIR}."
 else
+    local cc_cmd="gcc"
+    local hostcc_cmd="gcc"
+    if command -v ccache &>/dev/null; then
+        cc_cmd="ccache gcc"
+        hostcc_cmd="ccache gcc"
+        log_info "ccache detected, accelerating build with CC='${cc_cmd}'"
+    fi
+
     log_info "Starting kernel compilation: make -j${JOBS} bindeb-pkg..."
     make -j"${JOBS}" bindeb-pkg \
+        CC="${cc_cmd}" \
+        HOSTCC="${hostcc_cmd}" \
         DEBUG_INFO=n \
         KCFLAGS="-std=gnu11" \
         HOSTCFLAGS="-std=gnu11" \
