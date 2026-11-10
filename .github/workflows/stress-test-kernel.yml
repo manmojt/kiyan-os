@@ -126,17 +126,26 @@ jobs:
               sudo cp "$INITRD" ./initrd
               INITRD_ARG="-initrd ./initrd"
           fi
+          sudo chmod -R 777 ./vmlinuz ./initrd rootfs.img 2>/dev/null || true
           sudo umount mnt
           
+          KVM_ARG="-cpu max"
+          if [ -e /dev/kvm ] && [ -w /dev/kvm ]; then
+              KVM_ARG="-enable-kvm -cpu host"
+          fi
+          echo "Selected QEMU Acceleration & CPU model: $KVM_ARG"
+
           echo "Booting KIAN-OS v3 Kernel under QEMU with full test suite..."
           timeout 180s qemu-system-x86_64 \
+            $KVM_ARG \
             -m 2048M \
             -smp 2 \
+            -no-reboot \
             -nic user,model=virtio \
             -kernel ./vmlinuz \
             $INITRD_ARG \
             -drive file=rootfs.img,format=raw,if=virtio \
-            -append "root=/dev/vda rw console=ttyS0 panic=1 quiet init=/root/run_strict_test.sh" \
+            -append "root=/dev/vda rw console=ttyS0 earlyprintk=serial,ttyS0,115200 init=/root/run_strict_test.sh" \
             -nographic \
             -serial file:/tmp/strict_test_output.log || true
 
