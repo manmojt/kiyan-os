@@ -277,4 +277,9 @@ if command -v sbsign &>/dev/null && [[ -f "${MOK_PRIV}" && -f "${MOK_PEM}" ]]; t
     done
 fi
 
+# Ensure entire build output directory and all packages are accessible by non-root users
+chmod -R a+rwx "${BUILD_OUT_DIR}" "${KERNEL_PKGS_DIR}" 2>/dev/null || true
+chown -R "${SUDO_USER:-1001:1001}" "${BUILD_OUT_DIR}" 2>/dev/null || true
+(cd "${KERNEL_PKGS_DIR}" && sha256sum *.deb > SHA256SUMS && chmod a+rw SHA256SUMS) 2>/dev/null || true
+
 log_success "Phase 1: linux-kian v3 Kernel build completed successfully!"
