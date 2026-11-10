@@ -76,7 +76,7 @@ apt-get update
 apt-get install -y --no-install-recommends \
     plasma-workspace-wayland \
     kwin-wayland \
-    plasma-desktop \
+    plasma-desktop konsole dolphin plasma-discover plasma-discover-backend-flatpak flatpak plasma-nm plasma-pa systemsettings falkon ark vlc kate gwenview plymouth plymouth-theme-spinner \
     sddm \
     sddm-theme-breeze \
     qt5-style-kvantum \
@@ -92,6 +92,9 @@ apt-get install -y --no-install-recommends \
 if [[ -f /usr/share/xsessions/plasma.desktop ]]; then
     mv /usr/share/xsessions/plasma.desktop /usr/share/xsessions/plasma.desktop.disabled 2>/dev/null || true
 fi
+
+# Set animated boot splash theme
+plymouth-set-default-theme -R spinner 2>/dev/null || true
 
 apt-get clean
 rm -rf /var/lib/apt/lists/*
@@ -203,10 +206,10 @@ cat << 'EOF' > "${TARGET_ROOTFS}/etc/skel/Desktop/calamares.desktop"
 [Desktop Entry]
 Type=Application
 Version=1.0
-Name=Install KIAN-OS v3
+Name=Install Kian-OS v3
 GenericName=Live Operating System Installer
 Comment=Install KIAN-OS v3 cleanly to disk with automated Btrfs layout
-Exec=sudo -E /usr/bin/calamares
+Exec=pkexec /usr/bin/calamares
 Icon=calamares
 Terminal=false
 Categories=Qt;System;
@@ -214,6 +217,8 @@ StartupNotify=true
 EOF
 chmod +x "${TARGET_ROOTFS}/etc/skel/Desktop/calamares.desktop"
 cp "${TARGET_ROOTFS}/etc/skel/Desktop/calamares.desktop" "${TARGET_ROOTFS}/home/kian/Desktop/" 2>/dev/null || true
+chmod +x "${TARGET_ROOTFS}/home/kian/Desktop/"*.desktop 2>/dev/null || true
+chown -R 1000:1000 "${TARGET_ROOTFS}/home/kian" 2>/dev/null || true
 
 # ------------------------------------------------------------------------------
 # 6. Local Offline P2P Synchronization Services
@@ -360,5 +365,36 @@ log_end_msg
 exit 0
 EOF
 chmod +x "${TARGET_ROOTFS}/etc/initramfs-tools/scripts/init-bottom/kian_overlayfs"
+
+# ------------------------------------------------------------------------------
+# 8. Full OS Branding & Identity (Kian-OS v3 Noble Edition)
+# ------------------------------------------------------------------------------
+log_step "Applying Full Kian-OS v3 Operating System Branding & Identity"
+
+cat << 'EOF' > "${TARGET_ROOTFS}/etc/os-release"
+NAME="Kian-OS"
+VERSION="3.0 (Noble Edition)"
+ID=kian-os
+ID_LIKE="ubuntu debian"
+PRETTY_NAME="Kian-OS v3 (Noble Edition)"
+VERSION_ID="3.0"
+HOME_URL="https://github.com/manmojt/kiyan-os"
+SUPPORT_URL="https://github.com/manmojt/kiyan-os/issues"
+BUG_REPORT_URL="https://github.com/manmojt/kiyan-os/issues"
+PRIVACY_POLICY_URL="https://github.com/manmojt/kiyan-os"
+UBUNTU_CODENAME=noble
+LOGO=kian-logo
+EOF
+
+cat << 'EOF' > "${TARGET_ROOTFS}/etc/lsb-release"
+DISTRIB_ID=Kian-OS
+DISTRIB_RELEASE=3.0
+DISTRIB_CODENAME=noble
+DISTRIB_DESCRIPTION="Kian-OS v3 (Noble Edition)"
+EOF
+
+echo "Kian-OS v3 (Noble Edition) \n \l" > "${TARGET_ROOTFS}/etc/issue"
+echo "Kian-OS v3 (Noble Edition) \n \l" > "${TARGET_ROOTFS}/etc/issue.net"
+echo "kian-os" > "${TARGET_ROOTFS}/etc/hostname"
 
 log_success "Phase 3: Desktop customization and installer assembly complete!"
