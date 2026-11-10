@@ -181,9 +181,13 @@ run_cmd cp "${KERNEL_CONFIG_FILE}" "${TARGET_SRC}/.config"
 
 if [[ -f "${TARGET_SRC}/scripts/config" && "${DRY_RUN}" != "1" ]]; then
     log_info "Optimizing kernel build: disabling heavy debuginfo to accelerate compile and prevent BTF issues..."
-    "${TARGET_SRC}/scripts/config" --disable DEBUG_INFO
-    "${TARGET_SRC}/scripts/config" --disable DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT
-    "${TARGET_SRC}/scripts/config" --disable DEBUG_INFO_BTF
+    "${TARGET_SRC}/scripts/config" --enable CONFIG_DEBUG_INFO_NONE
+    "${TARGET_SRC}/scripts/config" --disable CONFIG_DEBUG_INFO
+    "${TARGET_SRC}/scripts/config" --disable CONFIG_DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT
+    "${TARGET_SRC}/scripts/config" --disable CONFIG_DEBUG_INFO_DWARF4
+    "${TARGET_SRC}/scripts/config" --disable CONFIG_DEBUG_INFO_DWARF5
+    "${TARGET_SRC}/scripts/config" --disable CONFIG_DEBUG_INFO_BTF
+    "${TARGET_SRC}/scripts/config" --disable CONFIG_DEBUG_INFO_BTF_MODULES
     "${TARGET_SRC}/scripts/config" --set-val CONFIG_MODULE_SIG y
     "${TARGET_SRC}/scripts/config" --set-val CONFIG_MODULE_SIG_ALL y
     "${TARGET_SRC}/scripts/config" --set-val CONFIG_MODULE_SIG_SHA512 y
@@ -229,6 +233,7 @@ elif [[ "${DRY_RUN}" == "1" ]]; then
 else
     log_info "Starting kernel compilation: make -j${JOBS} bindeb-pkg..."
     make -j"${JOBS}" bindeb-pkg \
+        DEBUG_INFO=n \
         KCFLAGS="-std=gnu11" \
         HOSTCFLAGS="-std=gnu11" \
         DPKG_FLAGS="-d" \
@@ -240,6 +245,8 @@ else
     # Move generated Debian packages into KERNEL_PKGS_DIR
     mv "$(dirname "${TARGET_SRC}")"/linux-*kian-v3*.deb "${KERNEL_PKGS_DIR}/" 2>/dev/null || \
     mv "${TARGET_SRC}/.."/linux-*kian-v3*.deb "${KERNEL_PKGS_DIR}/" 2>/dev/null || true
+    chmod -R 777 "${KERNEL_PKGS_DIR}" 2>/dev/null || true
+    chown -R "${SUDO_USER:-$USER}" "${KERNEL_PKGS_DIR}" 2>/dev/null || true
 fi
 
 # ------------------------------------------------------------------------------
