@@ -198,10 +198,17 @@ if [[ -f "${TARGET_SRC}/scripts/config" && "${DRY_RUN}" != "1" ]]; then
     "${TARGET_SRC}/scripts/config" --set-str CONFIG_SYSTEM_REVOCATION_KEYS ""
 
     log_info "Reconciling configuration defaults (make olddefconfig)..."
-    # Ensure x86 EFI libstub does not fail with C23 keyword collisions on modern GCC
-    if [[ -f "${TARGET_SRC}/drivers/firmware/efi/libstub/Makefile" ]]; then
-        sed -i "s/cflags-\$(CONFIG_X86)\s*+=/cflags-\$(CONFIG_X86) += -std=gnu11 /" "${TARGET_SRC}/drivers/firmware/efi/libstub/Makefile" || true
-    fi
+    # Enforce -std=gnu11 across all x86 boot Makefiles to prevent C23 bool/false keyword collisions on modern GCC
+    log_info "Enforcing -std=gnu11 across x86 boot Makefiles for GCC compatibility..."
+    for mf in "${TARGET_SRC}/arch/x86/boot/compressed/Makefile" \
+              "${TARGET_SRC}/arch/x86/boot/Makefile" \
+              "${TARGET_SRC}/arch/x86/realmode/rm/Makefile" \
+              "${TARGET_SRC}/drivers/firmware/efi/libstub/Makefile"; do
+        if [[ -f "${mf}" ]]; then
+            sed -i "s/KBUILD_CFLAGS\s*:=/KBUILD_CFLAGS := -std=gnu11 /g" "${mf}" || true
+            sed -i "s/cflags-\$(CONFIG_X86)\s*+=/cflags-\$(CONFIG_X86) += -std=gnu11 /g" "${mf}" || true
+        fi
+    done
 
     make olddefconfig
 fi
@@ -222,6 +229,8 @@ elif [[ "${DRY_RUN}" == "1" ]]; then
 else
     log_info "Starting kernel compilation: make -j${JOBS} bindeb-pkg..."
     make -j"${JOBS}" bindeb-pkg \
+        KCFLAGS="-std=gnu11" \
+        HOSTCFLAGS="-std=gnu11" \
         DPKG_FLAGS="-d" \
         LOCALVERSION="-kian-v3" \
         KDEB_PKGVERSION="${KERNEL_PKG_VERSION}" \
