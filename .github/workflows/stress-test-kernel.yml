@@ -75,6 +75,10 @@ jobs:
           uname -a
           cat /proc/version
           echo "CPU Sockets & Cores: $(nproc)"
+          echo "Network Interfaces:"
+          ip link show || true
+          echo "TCP Congestion Control Algorithm:"
+          sysctl net.ipv4.tcp_congestion_control || cat /proc/sys/net/ipv4/tcp_congestion_control || true
           
           echo "=== [STAGE 1: HARDWARE JITTER & LATENCY AUDIT (cyclictest)] ==="
           cyclictest -p 98 -m -l 20000 -q | tee /root/cyclictest.log || true
@@ -125,11 +129,10 @@ jobs:
           sudo umount mnt
           
           echo "Booting KIAN-OS v3 Kernel under QEMU with full test suite..."
-          timeout 120s qemu-system-x86_64 \
+          timeout 180s qemu-system-x86_64 \
             -m 2048M \
             -smp 2 \
-            -net none \
-            -boot c \
+            -nic user,model=virtio \
             -kernel ./vmlinuz \
             $INITRD_ARG \
             -drive file=rootfs.img,format=raw,if=virtio \
@@ -147,8 +150,8 @@ jobs:
           if grep -q "TEST_AUDIT_PASSED_VERIFIED" /tmp/strict_test_output.log; then
               echo "✅ [VERDICT] KIAN-OS v3 passed the strictest adversarial kernel stress & latency audit!"
           else
-              echo "⚠️ [INSPECTION] Reviewing execution log for completion markers..."
-              grep -i -E "Linux version|BORE|stress-ng|cyclictest" /tmp/strict_test_output.log || true
+              echo "❌ [FAILURE] Test did not reach completion or failed!"
+              exit 1
           fi
 
       - name: Upload Strict Test Audit Logs as Artifact
