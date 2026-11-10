@@ -42,7 +42,7 @@ jobs:
           sudo mount rootfs.img mnt
           
           # Fast minimal base bootstrap
-          sudo debootstrap --variant=minbase --components=main,universe --include=kmod,systemd,udev,procps noble mnt http://archive.ubuntu.com/ubuntu/
+          sudo debootstrap --variant=minbase --components=main,universe --include=initramfs-tools,kmod,systemd,udev,procps noble mnt http://archive.ubuntu.com/ubuntu/
           
           # Enable DNS resolution in chroot
           sudo cp /etc/resolv.conf mnt/etc/
@@ -54,8 +54,9 @@ jobs:
           # Copy kernel packages into chroot
           sudo cp /tmp/pkgs/*.deb mnt/tmp/
           
-          # Install kernel inside rootfs
+          # Install kernel inside rootfs and build initramfs
           sudo chroot mnt bash -c "dpkg -i /tmp/*.deb || apt-get install -fy"
+          sudo chroot mnt bash -c "update-initramfs -c -k all || true"
           
           # Enable serial console autologin
           sudo chroot mnt systemctl enable serial-getty@ttyS0.service || true
@@ -132,7 +133,11 @@ jobs:
           VMLINUZ=$(find mnt/boot -name "vmlinuz-*" | head -n1)
           INITRD=$(find mnt/boot -name "initrd.img-*" | head -n1)
           sudo cp "$VMLINUZ" ./vmlinuz
-          sudo cp "$INITRD" ./initrd || true
+          INITRD_ARG=""
+          if [[ -n "$INITRD" && -f "$INITRD" ]]; then
+              sudo cp "$INITRD" ./initrd
+              INITRD_ARG="-initrd ./initrd"
+          fi
           sudo umount mnt
           
           echo "Booting KIAN-OS v3 Kernel under QEMU with full test suite..."
@@ -140,7 +145,7 @@ jobs:
             -m 2048M \
             -smp 2 \
             -kernel ./vmlinuz \
-            -initrd ./initrd \
+            $INITRD_ARG \
             -drive file=rootfs.img,format=raw,if=virtio \
             -append "root=/dev/vda rw console=ttyS0 quiet panic=1" \
             -nographic \
