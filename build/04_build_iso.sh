@@ -254,6 +254,9 @@ if [[ -n "${MM_BIN}" ]]; then
     run_cmd cp "${MM_BIN}" "${TARGET_TREE}/EFI/BOOT/mmx64.efi"
 fi
 
+# Also place grub.cfg in EFI/BOOT so grubx64.efi finds it immediately in UEFI mode
+cp "${TARGET_TREE}/boot/grub/grub.cfg" "${TARGET_TREE}/EFI/BOOT/grub.cfg"
+
 # Assemble FAT16 EFI Boot Partition Image
 EFI_IMG="${TARGET_TREE}/boot/grub/efi.img"
 log_info "Assembling FAT16 EFI system partition image: ${EFI_IMG}..."
@@ -270,6 +273,9 @@ else
         mmd -i "${EFI_IMG}" ::/EFI/BOOT 2>/dev/null || true
         if compgen -G "${TARGET_TREE}/EFI/BOOT/*" > /dev/null; then
             mcopy -i "${EFI_IMG}" -s "${TARGET_TREE}/EFI/BOOT"/* ::/EFI/BOOT/ 2>/dev/null || true
+        mmd -i "${EFI_IMG}" ::/boot 2>/dev/null || true
+        mmd -i "${EFI_IMG}" ::/boot/grub 2>/dev/null || true
+        mcopy -i "${EFI_IMG}" "${TARGET_TREE}/boot/grub/grub.cfg" ::/boot/grub/grub.cfg 2>/dev/null || true
         fi
     else
         # Fallback to loopback mount
