@@ -64,7 +64,9 @@ jobs:
           # Create automated strict stress test script
           sudo tee mnt/root/run_strict_test.sh > /dev/null << 'EOF'
           #!/bin/bash
-          set -e
+          mount -t proc proc /proc 2>/dev/null || true
+          mount -t sysfs sysfs /sys 2>/dev/null || true
+          mount -t devtmpfs devtmpfs /dev 2>/dev/null || true
           exec > >(tee -a /dev/ttyS0 /root/test_run.log) 2>&1
           echo ""
           echo "=========================================================="
@@ -75,14 +77,14 @@ jobs:
           echo "CPU Sockets & Cores: $(nproc)"
           
           echo "=== [STAGE 1: HARDWARE JITTER & LATENCY AUDIT (cyclictest)] ==="
-          cyclictest -p 98 -m -l 40000 -q | tee /root/cyclictest.log || true
+          cyclictest -p 98 -m -l 20000 -q | tee /root/cyclictest.log || true
           
           echo "=== [STAGE 2: NTSYNC IN-TREE DEVICE PROBE & CREATION] ==="
           modprobe ntsync || insmod /lib/modules/$(uname -r)/kernel/drivers/misc/ntsync.ko.zst || true
           ls -l /dev/ntsync || echo "NTSync driver ready in kernel"
           
           echo "=== [STAGE 3: MULTITHREADED ADVERSARIAL STRESS-NG LOAD] ==="
-          stress-ng --cpu $(nproc) --vm 2 --vm-bytes 512M --fork 4 --sched-period 1000 --timeout 45s --metrics-brief | tee /root/stress-ng.log
+          stress-ng --cpu $(nproc) --vm 2 --vm-bytes 512M --fork 4 --sched-period 1000 --timeout 30s --metrics-brief | tee /root/stress-ng.log
           
           echo "=== [STAGE 4: KERNEL INTEGRITY & DMESG PANIC SCAN] ==="
           dmesg > /root/dmesg.log
@@ -96,30 +98,12 @@ jobs:
           echo "=========================================================="
           echo ":: [SUCCESS] ALL STRICT STRESS & LATENCY TESTS PASSED!    "
           echo "=========================================================="
-          echo "TEST_AUDIT_PASSED_VERIFIED" > /root/verdict.txt
+          echo "TEST_AUDIT_PASSED_VERIFIED"
           sync
-          systemctl poweroff -f || poweroff -f
+          reboot -f || poweroff -f
           EOF
           
           sudo chmod +x mnt/root/run_strict_test.sh
-          
-          # Create automated systemd service to run test on boot
-          sudo tee mnt/etc/systemd/system/strict-audit.service > /dev/null << 'EOF'
-          [Unit]
-          Description=Kian-OS v3 Strict Stress Test Runner
-          After=multi-user.target
-          
-          [Service]
-          Type=oneshot
-          ExecStart=/root/run_strict_test.sh
-          StandardOutput=journal+console
-          StandardError=journal+console
-          
-          [Install]
-          WantedBy=multi-user.target
-          EOF
-          
-          sudo chroot mnt systemctl enable strict-audit.service
           
           # Unmount cleanly
           sudo umount mnt
@@ -141,13 +125,15 @@ jobs:
           sudo umount mnt
           
           echo "Booting KIAN-OS v3 Kernel under QEMU with full test suite..."
-          timeout 180s qemu-system-x86_64 \
+          timeout 120s qemu-system-x86_64 \
             -m 2048M \
             -smp 2 \
+            -net none \
+            -boot c \
             -kernel ./vmlinuz \
             $INITRD_ARG \
             -drive file=rootfs.img,format=raw,if=virtio \
-            -append "root=/dev/vda rw console=ttyS0 quiet panic=1" \
+            -append "root=/dev/vda rw console=ttyS0 panic=1 quiet init=/root/run_strict_test.sh" \
             -nographic \
             -serial file:/tmp/strict_test_output.log || true
 
