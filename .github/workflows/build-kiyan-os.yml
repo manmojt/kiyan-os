@@ -1,4 +1,4 @@
-name: Build Kian-OS v2 (Council Approved x86_64)
+name: Build Kian-OS v3 (Council Approved x86_64)
 
 on:
   workflow_dispatch:
@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   build-kian-iso:
-    name: Build Ubuntu 24.04 + KDE Plasma Wayland + 3 Themes x86_64 ISO
+    name: Assemble Clean-Slate Kian-OS v3 Hybrid ISO
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -19,21 +19,23 @@ jobs:
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
           sudo apt-get update
-          sudo apt-get install -y debootstrap squashfs-tools xorriso grub-pc-bin grub-efi-amd64-bin mtools zstd
+          sudo apt-get install -y debootstrap squashfs-tools xorriso grub-pc-bin grub-efi-amd64-bin mtools zstd libarchive-tools
 
-      - name: Execute Council-Approved Kian-OS v2 Build Pipeline
+      - name: Download Verified linux-kian v3 Superkernel Packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p build/kernel_pkgs
+          gh release download linux-kian-v3-build-14 -R manmojt/kiyan-os -D build/kernel_pkgs/ -p '*.deb'
+          ls -lh build/kernel_pkgs/
+
+      - name: Execute Council-Approved Kian-OS v3 Clean Build Pipeline
         run: sudo ./scripts/build-kian-iso.sh
 
-      - name: Publish Single Unified ISO to GitHub Release
+      - name: Publish Unified Kian-OS v3 ISO to GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           cd output
-          TAG="kian-v2-run-${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" \
-            --title "Kian-OS v2.1 Zero-Flaw (x86_64) Build #${GITHUB_RUN_NUMBER}" \
-            --notes "Automated Council-Approved Kian-OS v2.1 Zero-Flaw Unified x86_64 ISO (Ubuntu 24.04 LTS + KDE Plasma Wayland + 3 Instant Themes + libfprint-2 + Flathub + Wine64)." \
-            --latest \
-            Kian-OS-v2-x86_64.iso \
-            Kian-OS-v2-x86_64.iso.sha256 \
-            SHA256SUMS
+          TAG="kian-v3-run-${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG"             --title "Kian-OS v3 Zero-Flaw Hybrid OS (x86_64) Build #${GITHUB_RUN_NUMBER}"             --notes "Official Production Release of Kian-OS v3 Hybrid Operating System. Powered by linux-kian v3 Superkernel (BORE 1000Hz, NTSync, Surface SAM/IPTS, Intel IPU6, Apple SPI Force Touch, Pure Wayland, Triple-Shell Engine, and Btrfs Atomic Rollback)."             --latest             kian-os-v3-noble-amd64.iso             kian-os-v3-noble-amd64.iso.sha256             SHA256SUMS
