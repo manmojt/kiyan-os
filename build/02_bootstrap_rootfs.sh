@@ -188,7 +188,7 @@ apt-get update
 apt-get install -y --no-install-recommends \
     systemd systemd-sysv udev dbus sudo locales tzdata \
     network-manager wpasupplicant btrfs-progs snapper \
-    casper lupin-casper grub-efi-amd64-signed shim-signed \
+    casper grub-efi-amd64-signed shim-signed \
     pipewire wireplumber \
     mesa-vulkan-drivers mesa-va-drivers vulkan-tools \
     ubuntu-drivers-common \

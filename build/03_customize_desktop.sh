@@ -79,14 +79,14 @@ apt-get install -y --no-install-recommends \
     plasma-desktop \
     sddm \
     sddm-theme-breeze \
-    qt6-style-kvantum \
-    kvantum \
+    qt5-style-kvantum \
+    qt5-style-kvantum-themes \
     fontconfig \
     fonts-inter \
     fonts-vazirmatn \
     fonts-firacode \
     calamares \
-    calamares-settings-ubuntu
+    calamares-settings-ubuntu-common
 
 # Mask legacy X11 session desktop files so SDDM exclusively offers Wayland
 if [[ -f /usr/share/xsessions/plasma.desktop ]]; then
