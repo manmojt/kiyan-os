@@ -42,7 +42,14 @@ jobs:
           sudo mount rootfs.img mnt
           
           # Fast minimal base bootstrap
-          sudo debootstrap --variant=minbase --include=stress-ng,rt-tests,kmod,systemd,udev,procps,iproute2,pciutils noble mnt http://archive.ubuntu.com/ubuntu/
+          sudo debootstrap --variant=minbase --components=main,universe --include=kmod,systemd,udev,procps noble mnt http://archive.ubuntu.com/ubuntu/
+          
+          # Enable DNS resolution in chroot
+          sudo cp /etc/resolv.conf mnt/etc/
+          
+          # Install stress-ng and rt-tests via apt
+          sudo chroot mnt apt-get update
+          sudo chroot mnt apt-get install -y stress-ng rt-tests
           
           # Copy kernel packages into chroot
           sudo cp /tmp/pkgs/*.deb mnt/tmp/
