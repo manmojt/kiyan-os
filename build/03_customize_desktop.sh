@@ -191,6 +191,14 @@ if [[ -d "${INSTALLER_DIR}/calamares/modules" ]]; then
     run_cmd cp -r "${INSTALLER_DIR}/calamares/modules"/* "${TARGET_ROOTFS}/etc/calamares/modules/"
 fi
 
+# Deploy Calamares Branding
+if [[ -d "${INSTALLER_DIR}/calamares/branding" ]]; then
+    log_info "Deploying Calamares branding descriptors..."
+    mkdir -p "${TARGET_ROOTFS}/etc/calamares/branding" "${TARGET_ROOTFS}/usr/share/calamares/branding"
+    run_cmd cp -r "${INSTALLER_DIR}/calamares/branding"/* "${TARGET_ROOTFS}/etc/calamares/branding/"
+    run_cmd cp -r "${INSTALLER_DIR}/calamares/branding"/* "${TARGET_ROOTFS}/usr/share/calamares/branding/"
+fi
+
 # Deploy Calamares Hooks to both /usr/share/calamares/hooks and /usr/lib/calamares/hooks
 if [[ -d "${INSTALLER_DIR}/calamares/hooks" ]]; then
     log_info "Deploying Calamares pre/post-install hooks..."

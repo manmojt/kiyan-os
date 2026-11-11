@@ -1,0 +1,36 @@
+---
+componentName:  kian
+welcomeStyleCalamares:   false
+welcomeExpandingLogo:   true
+windowExpanding:    normal
+windowSize: 800px,520px
+windowPlacement: center
+sidebar: widget
+navigation: widget
+
+strings:
+    productName:         "Kian-OS v3"
+    shortProductName:    "Kian-OS"
+    version:             "3.0 (Noble Edition)"
+    shortVersion:        "3.0"
+    versionedName:       "Kian-OS v3 (Noble Edition)"
+    shortVersionedName:  "Kian-OS 3.0"
+    bootloaderEntryName: "Kian-OS"
+    productUrl:          "https://github.com/manmojt/kiyan-os"
+    supportUrl:          "https://github.com/manmojt/kiyan-os/issues"
+    knownIssuesUrl:      "https://github.com/manmojt/kiyan-os/issues"
+    releaseNotesUrl:     "https://github.com/manmojt/kiyan-os/releases"
+
+images:
+    productIcon:         "/usr/share/calamares/branding/default/squid.png"
+    productLogo:         "/usr/share/calamares/branding/default/squid.png"
+    productWelcome:      "/usr/share/calamares/branding/default/languages.png"
+
+style:
+   SidebarBackground:        "#1e222a"
+   SidebarText:              "#FFFFFF"
+   SidebarTextCurrent:       "#1e222a"
+   SidebarBackgroundCurrent: "#3daee9"
+
+slideshow:               "show.qml"
+slideshowAPI: 2
