@@ -102,8 +102,8 @@ jobs:
             qemu-system-x86 ovmf
           gcc-13 --version
 
-      - name: Configure Compiler Cache (ccache)
-        uses: actions/cache@v4
+      - name: Restore Compiler Cache (ccache)
+        uses: actions/cache/restore@v4
         with:
           path: /home/runner/.ccache
           key: linux-kian-noble2404-gcc13-${{ github.run_id }}
@@ -124,6 +124,13 @@ jobs:
             ./build/01_build_kernel.sh -j "$(nproc)"
           sudo chown -R "$USER:$USER" build/kernel_pkgs build/out/kernel_pkgs /home/runner/.ccache
           ccache -s
+
+      - name: Save Compiler Cache (ccache)
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: /home/runner/.ccache
+          key: linux-kian-noble2404-gcc13-${{ github.run_id }}
 
       - name: Strict Cryptographic & Dual-CPU QEMU Boot Gate (Zero Swallowed Errors)
         run: |

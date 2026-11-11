@@ -213,7 +213,8 @@ if [[ -f "${TARGET_SRC}/scripts/config" && "${DRY_RUN}" != "1" ]]; then
     "${TARGET_SRC}/scripts/config" --set-str CONFIG_SYSTEM_REVOCATION_KEYS ""
 
     log_info "Reconciling configuration defaults (make olddefconfig)..."
-    make olddefconfig
+    rm -rf "${TARGET_SRC}/.git"
+    make LOCALVERSION= olddefconfig
 fi
 
 # ------------------------------------------------------------------------------
@@ -253,6 +254,7 @@ else
 
     log_info "Starting kernel compilation: make -j${JOBS} bindeb-pkg..."
     make -j"${JOBS}" bindeb-pkg \
+        LOCALVERSION= \
         CC="${cc_cmd}" \
         HOSTCC="${hostcc_cmd}" \
         DEBUG_INFO=n \
