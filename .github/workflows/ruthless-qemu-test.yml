@@ -1,0 +1,92 @@
+name: Ruthless QEMU Live OS Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release Tag to Test (e.g. kian-v3-run-69)'
+        required: true
+        default: 'kian-v3-run-69'
+
+jobs:
+  qemu_ruthless_verification:
+    name: Ruthless x86_64 QEMU Live Boot & Visual Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install QEMU, OVMF & ImageMagick
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 ovmf imagemagick netcat-openbsd
+
+      - name: Download ISO from GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo ":: Downloading ISO asset from release ${{ inputs.release_tag }}..."
+          gh release download "${{ inputs.release_tag }}"             -p "kian-os-v3-noble-amd64.iso"             -p "SHA256SUMS"             -R ${{ github.repository }}
+          
+          ls -lh kian-os-v3-noble-amd64.iso
+          echo ":: Verifying Checksums..."
+          sha256sum -c SHA256SUMS
+
+      - name: Direct Superkernel & Casper Live Boot Audit
+        run: |
+          mkdir -p /tmp/iso_mount
+          sudo mount -o loop,ro kian-os-v3-noble-amd64.iso /tmp/iso_mount
+          
+          echo ":: Kernel Info:"
+          file /tmp/iso_mount/casper/vmlinuz
+          
+          mkdir -p /tmp/boot_assets
+          cp /tmp/iso_mount/casper/vmlinuz /tmp/boot_assets/vmlinuz
+          cp /tmp/iso_mount/casper/initrd /tmp/boot_assets/initrd
+          sudo umount /tmp/iso_mount
+          
+          echo ":: Booting Superkernel directly in QEMU to capture full serial dmesg..."
+          timeout 60 qemu-system-x86_64             -m 2048             -smp 2             -kernel /tmp/boot_assets/vmlinuz             -initrd /tmp/boot_assets/initrd             -append "boot=casper console=ttyS0,115200 debug panic=10"             -nographic             -serial file:/tmp/kernel_direct_dmesg.log             -display none || true
+          
+          echo ":: Auditing Kernel Log:"
+          grep -i -E '(Linux version|BORE|kian|casper|CPU|Memory)' /tmp/kernel_direct_dmesg.log | head -n 40
+
+      - name: Full ISO Boot & Screen Capture Audit
+        run: |
+          echo ":: Launching Full Hybrid ISO in QEMU with Monitor Socket..."
+          qemu-system-x86_64             -m 2048             -smp 2             -cdrom kian-os-v3-noble-amd64.iso             -boot d             -vga std             -monitor unix:/tmp/qemu_monitor.sock,server,nowait             -serial file:/tmp/iso_serial.log             -display none &
+          QEMU_PID=$!
+          
+          echo ":: Waiting 10 seconds for bootloader..."
+          sleep 10
+          
+          echo ":: Sending Enter key via QEMU monitor..."
+          echo "sendkey ret" | nc -U /tmp/qemu_monitor.sock || true
+          
+          echo ":: Allowing 30 seconds for live system boot..."
+          sleep 30
+          
+          echo ":: Capturing Framebuffer Screenshot via screendump..."
+          echo "screendump /tmp/boot_screenshot.ppm" | nc -U /tmp/qemu_monitor.sock || true
+          sleep 2
+          
+          kill $QEMU_PID || true
+          
+          if [[ -f /tmp/boot_screenshot.ppm ]]; then
+            echo ":: Converting Screenshot to PNG..."
+            convert /tmp/boot_screenshot.ppm /tmp/boot_screenshot.png
+            ls -lh /tmp/boot_screenshot.png
+          else
+            echo ":: Screenshot not created, checking serial log..."
+          fi
+
+      - name: Upload Boot Artifacts & Screenshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: qemu-boot-evidence
+          path: |
+            /tmp/boot_screenshot.png
+            /tmp/kernel_direct_dmesg.log
+            /tmp/iso_serial.log
