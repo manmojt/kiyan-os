@@ -15,58 +15,58 @@ permissions:
 
 jobs:
   build-kernel:
-    name: Compile, Sign & Verify linux-kian v3 (Ubuntu 24.04 LTS)
-    runs-on: ubuntu-24.04
+    name: Compile, Sign & Verify linux-kian v3 (Pure Noble GCC-13 Container + KVM Gate)
+    runs-on: ubuntu-latest
     timeout-minutes: 240
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Free Runner Disk Space & Install Kernel Toolchain (GCC 13)
+      - name: Free Runner Disk Space & Install Host QEMU / Secure Boot Verification Tools
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
-          # Bypass dead/throttled azure.archive.ubuntu.com mirror on ubuntu-24.04 runners
-          if [[ -f /etc/apt/apt-mirrors.txt ]]; then
-            printf 'http://archive.ubuntu.com/ubuntu/\nhttp://security.ubuntu.com/ubuntu/\n' | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
-          fi
-          sudo find /etc/apt -type f \( -name '*.list' -o -name '*.sources' \) -exec sed -i \
-            -e 's|http://azure\.archive\.ubuntu\.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' \
-            -e 's|https://azure\.archive\.ubuntu\.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' {} + || true
           printf '%s\0' /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL \
             | sudo xargs -0 -P4 rm -rf || true
           df -h /
-          sudo DEBIAN_FRONTEND=noninteractive apt-get update -o Acquire::http::Timeout=10 -o Acquire::Retries=2
-          sudo DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get install -y --no-install-recommends \
-            -o Acquire::http::Timeout=10 \
-            -o Acquire::Retries=2 \
-            -o Dpkg::Options::="--force-confdef" \
-            -o Dpkg::Options::="--force-confold" \
-            build-essential gcc-13 g++-13 debhelper libncurses-dev bison flex \
-            libssl-dev libelf-dev bc dwarves rsync kmod cpio sbsigntool zstd \
-            patch ccache qemu-system-x86 ovmf
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            qemu-system-x86 ovmf sbsigntool kmod zstd dpkg-dev file
 
       - name: Configure Compiler Cache (ccache)
         uses: actions/cache@v4
         with:
           path: /home/runner/.ccache
-          key: linux-kian-noble-gcc13-${{ github.run_id }}
+          key: linux-kian-noble2404-gcc13-${{ github.run_id }}
           restore-keys: |
-            linux-kian-noble-gcc13-
+            linux-kian-noble2404-gcc13-
 
-      - name: Initialize ccache
+      - name: Build & MOK-Sign Kernel Inside Pure Ubuntu 24.04 (Noble GCC-13) Container
         run: |
           mkdir -p /home/runner/.ccache
-          sudo update-ccache-symlinks || true
-          ccache --max-size=15G
-          ccache -s
-
-      - name: Execute Superkernel Build & Secure Boot Signing Pipeline
-        run: |
-          export CCACHE_DIR="/home/runner/.ccache"
-          sudo -E env "PATH=/usr/lib/ccache:$PATH" "CCACHE_DIR=/home/runner/.ccache" ./build/01_build_kernel.sh -j "$(nproc)"
+          docker pull ubuntu:24.04
+          docker run --rm \
+            --network=host \
+            -e DEBIAN_FRONTEND=noninteractive \
+            -e CCACHE_DIR=/ccache \
+            -v "$PWD:/work" \
+            -v "/home/runner/.ccache:/ccache" \
+            -w /work \
+            ubuntu:24.04 \
+            bash -euxo pipefail -c '
+              apt-get update
+              apt-get install -y --no-install-recommends \
+                ca-certificates git build-essential gcc-13 g++-13 debhelper dpkg-dev \
+                libncurses-dev bison flex libssl-dev libelf-dev bc dwarves rsync \
+                kmod cpio sbsigntool zstd xz-utils patch ccache file fakeroot openssl
+              update-ccache-symlinks || true
+              ccache --max-size=15G
+              ccache -s
+              export PATH="/usr/lib/ccache:$PATH"
+              ./build/01_build_kernel.sh -j "$(nproc)"
+              ccache -s
+            '
           sudo chown -R "$USER:$USER" build/kernel_pkgs build/out/kernel_pkgs
-          ccache -s
 
       - name: Strict Cryptographic & Dual-CPU QEMU Boot Gate (Zero Swallowed Errors)
         run: |
