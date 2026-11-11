@@ -86,7 +86,11 @@ apt-get install -y --no-install-recommends \
     fonts-vazirmatn \
     fonts-firacode \
     calamares \
-    calamares-settings-ubuntu-common
+    calamares-settings-ubuntu-common \
+    rsync \
+    efibootmgr \
+    dosfstools \
+    btrfs-progs
 
 # Mask legacy X11 session desktop files so SDDM exclusively offers Wayland
 if [[ -f /usr/share/xsessions/plasma.desktop ]]; then
