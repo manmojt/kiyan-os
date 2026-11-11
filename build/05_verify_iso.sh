@@ -154,7 +154,8 @@ unsquashfs -f -d "${WORK_DIR}/sq" "${WORK_DIR}/filesystem.squashfs" \
     etc/modules-load.d/kian-ntsync.conf \
     etc/sysctl.d/99-kian-performance.conf \
     home/kian/Desktop/calamares.desktop \
-    lib/modules/6.8.12-kian-v3/kernel/drivers/misc >/dev/null
+    usr/lib/modules/6.8.12-kian-v3/kernel/drivers/misc \
+    lib/modules/6.8.12-kian-v3/kernel/drivers/misc >/dev/null || true
 
 SQ="${WORK_DIR}/sq"
 test -x "${SQ}/usr/bin/pkexec"
@@ -182,7 +183,7 @@ if grep -qi "internal.cloudapp.net" "${SQ}/etc/resolv.conf"; then
     log_error "FATAL: Cloud build runner DNS domain leaked into SquashFS /etc/resolv.conf!"
     exit 1
 fi
-NTSYNC_KO=$(find "${SQ}/lib/modules/6.8.12-kian-v3" -name "ntsync.ko*" | head -n 1)
+NTSYNC_KO=$(find "${SQ}/usr/lib/modules/6.8.12-kian-v3" "${SQ}/lib/modules/6.8.12-kian-v3" -name "ntsync.ko*" 2>/dev/null | head -n 1 || true)
 test -f "${NTSYNC_KO}"
 if command -v modinfo &>/dev/null; then
     modinfo "${NTSYNC_KO}" | grep -q "signer:.*KIAN-OS"
