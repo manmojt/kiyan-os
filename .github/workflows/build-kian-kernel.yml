@@ -23,13 +23,19 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Free Runner Disk Space & Install Kernel Toolchain (GCC 13)
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
-          sudo apt-get update
-          sudo apt-get install -y \
+          printf '%s\0' /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL \
+            | sudo xargs -0 -P4 rm -rf || true
+          df -h /
+          sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get install -y -qq --no-install-recommends \
+            -o Dpkg::Options::="--force-confdef" \
+            -o Dpkg::Options::="--force-confold" \
             build-essential gcc-13 g++-13 debhelper libncurses-dev bison flex \
             libssl-dev libelf-dev bc dwarves rsync kmod cpio sbsigntool zstd \
-            patch ccache qemu-system-x86
+            patch ccache qemu-system-x86 ovmf
 
       - name: Configure Compiler Cache (ccache)
         uses: actions/cache@v4
