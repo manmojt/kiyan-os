@@ -15,23 +15,92 @@ permissions:
 
 jobs:
   build-kernel:
-    name: Compile, Sign & Verify linux-kian v3 (Pure Noble GCC-13 Container + KVM Gate)
-    runs-on: ubuntu-latest
+    name: Compile, Sign & Verify linux-kian v3 (Noble GCC-13 + KVM Boot Gate)
+    runs-on: ubuntu-24.04
     timeout-minutes: 240
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Free Runner Disk Space & Install Host QEMU / Secure Boot Verification Tools
+      - name: Fix Runner DNS (Cloudflare DoH + 1.1.1.1) & Switch APT to HTTPS CDN Mirrors
+        run: |
+          set -euo pipefail
+          # 1. Replace systemd-resolved stub symlink with deterministic public resolvers
+          sudo rm -f /etc/resolv.conf
+          printf "nameserver 1.1.1.1\nnameserver 8.8.8.8\nnameserver 9.9.9.9\noptions timeout:2 attempts:2\n" \
+            | sudo tee /etc/resolv.conf >/dev/null
+          sudo chmod 0644 /etc/resolv.conf
+
+          # 2. Bootstrap /etc/hosts via DNS-over-HTTPS IP literal (https://1.1.1.1/dns-query)
+          #    Guarantees zero DNS stall even if Azure UDP/53 is throttled or broken
+          sudo python3 - <<'PY'
+          import json, urllib.request
+
+          hosts = [
+              "azure.archive.ubuntu.com",
+              "archive.ubuntu.com",
+              "security.ubuntu.com",
+              "mirrors.edge.kernel.org",
+              "github.com",
+              "codeload.github.com",
+              "objects.githubusercontent.com",
+              "git.kernel.org",
+          ]
+          lines = []
+          for h in hosts:
+              try:
+                  req = urllib.request.Request(
+                      f"https://1.1.1.1/dns-query?name={h}&type=A",
+                      headers={"Accept": "application/dns-json", "User-Agent": "kian-ci/1.0"},
+                  )
+                  with urllib.request.urlopen(req, timeout=8) as r:
+                      data = json.loads(r.read().decode())
+                  ips = [
+                      ans["data"]
+                      for ans in data.get("Answer", [])
+                      if ans.get("type") == 1 and ans.get("data")
+                  ]
+                  if ips:
+                      lines.append(f"{ips[0]} {h}")
+                      print(f"[DoH] {h} -> {ips[0]}")
+              except Exception as exc:
+                  print(f"[DoH WARN] {h}: {exc}")
+
+          if lines:
+              with open("/etc/hosts", "a", encoding="utf-8") as fh:
+                  fh.write("\n# Kian-OS CI DoH Bootstrap\n" + "\n".join(lines) + "\n")
+          PY
+
+          # 3. Point Ubuntu 24.04 APT sources away from flaky azure.archive.ubuntu.com to fast HTTPS mirrors
+          if [[ -f /etc/apt/apt-mirrors.txt ]]; then
+            printf "https://mirrors.edge.kernel.org/ubuntu/\nhttps://archive.ubuntu.com/ubuntu/\n" \
+              | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
+          fi
+          for f in /etc/apt/sources.list /etc/apt/sources.list.d/ubuntu.sources; do
+            if [[ -f "$f" ]]; then
+              sudo sed -i \
+                -e 's|http://azure\.archive\.ubuntu\.com/ubuntu/\?|https://mirrors.edge.kernel.org/ubuntu/|g' \
+                -e 's|http://archive\.ubuntu\.com/ubuntu/\?|https://mirrors.edge.kernel.org/ubuntu/|g' \
+                -e 's|http://security\.ubuntu\.com/ubuntu/\?|https://security.ubuntu.com/ubuntu/|g' \
+                "$f"
+            fi
+          done
+
+      - name: Free Runner Disk Space & Install Noble Kernel Build + QEMU / Secure Boot Dependencies
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
+          set -euo pipefail
           printf '%s\0' /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL \
             | sudo xargs -0 -P4 rm -rf || true
           df -h /
-          sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            qemu-system-x86 ovmf sbsigntool kmod zstd dpkg-dev file
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15 update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=3 install -y --no-install-recommends \
+            ca-certificates git build-essential gcc-13 g++-13 debhelper dpkg-dev \
+            libncurses-dev bison flex libssl-dev libelf-dev bc dwarves rsync \
+            kmod cpio sbsigntool zstd xz-utils patch ccache file fakeroot openssl \
+            qemu-system-x86 ovmf
+          gcc-13 --version
 
       - name: Configure Compiler Cache (ccache)
         uses: actions/cache@v4
@@ -41,32 +110,20 @@ jobs:
           restore-keys: |
             linux-kian-noble2404-gcc13-
 
-      - name: Build & MOK-Sign Kernel Inside Pure Ubuntu 24.04 (Noble GCC-13) Container
+      - name: Compile & MOK-Sign linux-kian v3 Superkernel (Native Ubuntu 24.04 GCC-13)
         run: |
+          set -euo pipefail
           mkdir -p /home/runner/.ccache
-          docker pull ubuntu:24.04
-          docker run --rm \
-            --network=host \
-            -e DEBIAN_FRONTEND=noninteractive \
-            -e CCACHE_DIR=/ccache \
-            -v "$PWD:/work" \
-            -v "/home/runner/.ccache:/ccache" \
-            -w /work \
-            ubuntu:24.04 \
-            bash -euxo pipefail -c '
-              apt-get update
-              apt-get install -y --no-install-recommends \
-                ca-certificates git build-essential gcc-13 g++-13 debhelper dpkg-dev \
-                libncurses-dev bison flex libssl-dev libelf-dev bc dwarves rsync \
-                kmod cpio sbsigntool zstd xz-utils patch ccache file fakeroot openssl
-              update-ccache-symlinks || true
-              ccache --max-size=15G
-              ccache -s
-              export PATH="/usr/lib/ccache:$PATH"
-              ./build/01_build_kernel.sh -j "$(nproc)"
-              ccache -s
-            '
-          sudo chown -R "$USER:$USER" build/kernel_pkgs build/out/kernel_pkgs
+          sudo update-ccache-symlinks || true
+          ccache --max-size=15G
+          ccache -s
+          sudo -E env \
+            "PATH=/usr/lib/ccache:$PATH" \
+            "CCACHE_DIR=/home/runner/.ccache" \
+            "DEBIAN_FRONTEND=noninteractive" \
+            ./build/01_build_kernel.sh -j "$(nproc)"
+          sudo chown -R "$USER:$USER" build/kernel_pkgs build/out/kernel_pkgs /home/runner/.ccache
+          ccache -s
 
       - name: Strict Cryptographic & Dual-CPU QEMU Boot Gate (Zero Swallowed Errors)
         run: |
@@ -104,12 +161,13 @@ jobs:
               ;;
           esac
 
-          # 2. Assert Kconfig features (BORE, 1000Hz, NTSYNC, BBR, EFI_STUB)
+          # 2. Assert Kconfig features (BORE, 1000Hz, NTSYNC, BBR, EFI_STUB, GENERIC_CPU)
           grep -q "^CONFIG_SCHED_BORE=y" "$KCONFIG"
           grep -q "^CONFIG_HZ_1000=y" "$KCONFIG"
           grep -q "^CONFIG_NTSYNC=m" "$KCONFIG"
           grep -q "^CONFIG_TCP_CONG_BBR=y" "$KCONFIG"
           grep -q "^CONFIG_EFI_STUB=y" "$KCONFIG"
+          grep -q "^CONFIG_GENERIC_CPU=y" "$KCONFIG"
           echo "[PASS] Mandatory Kconfig flags verified in $KCONFIG"
 
           # 3. Assert PE/COFF Secure Boot signature on packaged vmlinuz
