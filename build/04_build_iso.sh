@@ -88,76 +88,62 @@ umount -l "${TARGET_ROOTFS}/sys" 2>/dev/null || true
 umount -l "${TARGET_ROOTFS}/run" 2>/dev/null || true
 
 if [[ "${DRY_RUN}" != "1" ]]; then
-    log_info "Truncating machine-id and clearing temporary staging caches..."
+    log_info "Truncating machine-id, sanitizing /etc/resolv.conf, and clearing staging caches..."
     truncate -s 0 "${TARGET_ROOTFS}/etc/machine-id" 2>/dev/null || true
+    rm -f "${TARGET_ROOTFS}/etc/resolv.conf"
+    cat << 'EOF' > "${TARGET_ROOTFS}/etc/resolv.conf"
+nameserver 1.1.1.1
+nameserver 8.8.8.8
+EOF
+    chmod 0644 "${TARGET_ROOTFS}/etc/resolv.conf"
     rm -rf "${TARGET_ROOTFS}/tmp"/* "${TARGET_ROOTFS}/var/tmp"/* 2>/dev/null || true
     rm -rf "${TARGET_ROOTFS}/var/cache/apt/archives"/*.deb 2>/dev/null || true
     rm -rf "${TARGET_ROOTFS}/var/lib/apt/lists"/* 2>/dev/null || true
 fi
 
 # ------------------------------------------------------------------------------
-# 2. Stage ISO Directory Tree Hierarchy
+# 2. Stage ISO Directory Tree Hierarchy & .disk Metadata
 # ------------------------------------------------------------------------------
-log_step "Preparing ISO Tree Hierarchy & Casper Live Environment"
+log_step "Preparing ISO Tree Hierarchy, .disk Metadata & Casper Live Environment"
 
 rm -rf "${TARGET_TREE}"
-mkdir -p "${TARGET_TREE}"/{casper,isolinux,EFI/BOOT,boot/grub}
+mkdir -p "${TARGET_TREE}"/{casper,isolinux,EFI/BOOT,boot/grub,.disk}
 
-# Locate and extract latest kernel and initramfs
-log_info "Extracting live kernel and initramfs images..."
-LIVE_KERNEL=""
-LIVE_INITRD=""
+echo 'Kian-OS 3.0.0 "Noble" - Release amd64' > "${TARGET_TREE}/.disk/info"
+touch "${TARGET_TREE}/.disk/base_installable"
+echo "full_cd/single" > "${TARGET_TREE}/.disk/cd_type"
 
-# Preference 1: linux-kian v3 kernel
-LIVE_KERNEL=$(find "${TARGET_ROOTFS}/boot" -maxdepth 1 -name "vmlinuz*kian-v3*" 2>/dev/null | sort -V | tail -n 1 || true)
-LIVE_INITRD=$(find "${TARGET_ROOTFS}/boot" -maxdepth 1 -name "initrd.img*kian-v3*" 2>/dev/null | sort -V | tail -n 1 || true)
+# Locate and extract verified linux-kian v3 kernel and initramfs (NEVER fall back silently!)
+log_info "Extracting verified linux-kian v3 live kernel and initramfs images..."
+LIVE_KERNEL=$(find "${TARGET_ROOTFS}/boot" -maxdepth 1 -type f -name "vmlinuz-6.8*-kian-v3" 2>/dev/null | sort -V | tail -n 1 || true)
+LIVE_INITRD=$(find "${TARGET_ROOTFS}/boot" -maxdepth 1 -type f -name "initrd.img-6.8*-kian-v3" 2>/dev/null | sort -V | tail -n 1 || true)
 
-# Ensure initramfs is generated if vmlinuz-kian-v3 exists but initrd was pending
-if [[ -n "${LIVE_KERNEL}" && ( -z "${LIVE_INITRD}" || ! -f "${LIVE_INITRD}" ) ]]; then
-    KVER=$(basename "${LIVE_KERNEL}" | sed "s/^vmlinuz-//")
-    log_info "Generating dedicated initramfs for ${KVER}..."
-    chroot "${TARGET_ROOTFS}" update-initramfs -c -k "${KVER}" 2>/dev/null || true
-    LIVE_INITRD=$(find "${TARGET_ROOTFS}/boot" -maxdepth 1 -name "initrd.img*${KVER}*" 2>/dev/null | sort -V | tail -n 1 || true)
-fi
-
-# Preference 2: generic stock kernel (fallback only)
-if [[ -z "${LIVE_KERNEL}" || ! -f "${LIVE_KERNEL}" ]]; then
-    log_warn "linux-kian v3 not found, falling back to generic kernel..."
-    LIVE_KERNEL=$(find "${TARGET_ROOTFS}/boot" -maxdepth 1 -name "vmlinuz*" 2>/dev/null | sort -V | tail -n 1 || true)
-fi
-if [[ -z "${LIVE_INITRD}" || ! -f "${LIVE_INITRD}" ]]; then
-    LIVE_INITRD=$(find "${TARGET_ROOTFS}/boot" -maxdepth 1 -name "initrd.img*" 2>/dev/null | sort -V | tail -n 1 || true)
-fi
-
-if [[ "${LIVE_KERNEL}" == *"kian-v3"* ]]; then
-    log_success ":: VERIFIED linux-kian v3 superkernel active: $(basename "${LIVE_KERNEL}")"
+if [[ "${DRY_RUN}" == "1" ]]; then
+    touch "${TARGET_TREE}/casper/vmlinuz" "${TARGET_TREE}/casper/initrd"
 else
-    log_warn ":: WARNING: Selected kernel is not linux-kian v3: $(basename "${LIVE_KERNEL}")"
-fi
-
-if [[ -n "${LIVE_KERNEL}" && -f "${LIVE_KERNEL}" ]]; then
-    log_info "Selected live kernel: $(basename "${LIVE_KERNEL}")"
-    run_cmd cp "${LIVE_KERNEL}" "${TARGET_TREE}/casper/vmlinuz"
-else
-    log_warn "No vmlinuz found in rootfs /boot."
-    if [[ "${DRY_RUN}" == "1" ]]; then
-        touch "${TARGET_TREE}/casper/vmlinuz"
-    else
-        log_error "Cannot build ISO without a bootable kernel binary."
+    if [[ -z "${LIVE_KERNEL}" || ! -f "${LIVE_KERNEL}" ]]; then
+        log_error "FATAL: Verified vmlinuz-6.8*-kian-v3 binary not found in ${TARGET_ROOTFS}/boot!"
         exit 1
     fi
-fi
-
-if [[ -n "${LIVE_INITRD}" && -f "${LIVE_INITRD}" ]]; then
-    log_info "Selected live initrd: $(basename "${LIVE_INITRD}")"
-    run_cmd cp "${LIVE_INITRD}" "${TARGET_TREE}/casper/initrd"
-else
-    log_warn "No initrd found in rootfs /boot."
-    if [[ "${DRY_RUN}" == "1" ]]; then
-        touch "${TARGET_TREE}/casper/initrd"
-    else
-        log_error "Cannot build ISO without a bootable initramfs image."
+    if [[ -z "${LIVE_INITRD}" || ! -f "${LIVE_INITRD}" ]]; then
+        log_error "FATAL: Verified initrd.img-6.8*-kian-v3 image not found in ${TARGET_ROOTFS}/boot!"
         exit 1
+    fi
+    log_success ":: VERIFIED linux-kian v3 superkernel active: $(basename "${LIVE_KERNEL}")"
+    run_cmd cp "${LIVE_KERNEL}" "${TARGET_TREE}/casper/vmlinuz"
+    run_cmd cp "${LIVE_INITRD}" "${TARGET_TREE}/casper/initrd"
+
+    # Extract Casper UUID from initrd if present so Casper matches media immediately
+    if command -v unmkinitramfs &>/dev/null; then
+        TMP_UUID_DIR=$(mktemp -d /tmp/kian-uuid-XXXXXX)
+        if unmkinitramfs "${LIVE_INITRD}" "${TMP_UUID_DIR}" 2>/dev/null; then
+            UUID_FILE=$(find "${TMP_UUID_DIR}" -path "*/conf/uuid.conf" | head -n 1 || true)
+            if [[ -n "${UUID_FILE}" && -s "${UUID_FILE}" ]]; then
+                cp "${UUID_FILE}" "${TARGET_TREE}/.disk/casper-uuid-generic"
+                log_info "Embedded matching .disk/casper-uuid-generic: $(cat "${UUID_FILE}")"
+            fi
+        fi
+        rm -rf "${TMP_UUID_DIR}"
     fi
 fi
 
@@ -188,25 +174,24 @@ log_step "Configuring UEFI GRUB Bootloader & EFI FAT System Partition"
 
 cat << 'EOF' > "${TARGET_TREE}/boot/grub/grub.cfg"
 set default="0"
-set timeout=10
+set timeout=3
 
 insmod all_video
 insmod font
 insmod gfxterm
 
 menuentry "Try or Install KIAN-OS v3 (linux-kian v3, Pure Wayland)" --class kian --class os {
-    linux /casper/vmlinuz boot=casper console=tty0 console=ttyS0,115200 quiet splash acpi_osi="Windows 2020" ---
+    linux /casper/vmlinuz boot=casper preempt=full split_lock_mitigate=0 console=ttyS0,115200 console=tty0 quiet splash acpi_osi="Windows 2020" ---
     initrd /casper/initrd
 }
 
 menuentry "Try or Install KIAN-OS v3 (Safe Graphics Mode - Nomodeset)" --class recovery --class os {
-    linux /casper/vmlinuz boot=casper nomodeset console=tty0 console=ttyS0,115200 quiet splash ---
+    linux /casper/vmlinuz boot=casper nomodeset console=ttyS0,115200 console=tty0 quiet splash ---
     initrd /casper/initrd
 }
 
-menuentry "Boot from System Hard Drive" --class harddrive {
-    set root=(hd0)
-    chainloader +1
+menuentry "Boot from Next UEFI Volume" --class harddrive {
+    exit
 }
 EOF
 
@@ -315,7 +300,7 @@ done
 cat << 'EOF' > "${TARGET_TREE}/isolinux/isolinux.cfg"
 UI menu.c32
 PROMPT 0
-TIMEOUT 100
+TIMEOUT 30
 DEFAULT kian
 
 MENU TITLE KIAN-OS v3 (Noble Numbat 24.04 LTS)
@@ -323,12 +308,12 @@ MENU TITLE KIAN-OS v3 (Noble Numbat 24.04 LTS)
 LABEL kian
   MENU LABEL Try or Install KIAN-OS v3 (Pure Wayland)
   KERNEL /casper/vmlinuz
-  APPEND initrd=/casper/initrd boot=casper console=tty0 console=ttyS0,115200 quiet splash acpi_osi="Windows 2020" ---
+  APPEND initrd=/casper/initrd boot=casper preempt=full split_lock_mitigate=0 console=ttyS0,115200 console=tty0 quiet splash acpi_osi="Windows 2020" ---
 
 LABEL safe
   MENU LABEL Try or Install KIAN-OS v3 (Safe Graphics Mode)
   KERNEL /casper/vmlinuz
-  APPEND initrd=/casper/initrd boot=casper nomodeset console=tty0 console=ttyS0,115200 quiet splash ---
+  APPEND initrd=/casper/initrd boot=casper nomodeset console=ttyS0,115200 console=tty0 quiet splash ---
 EOF
 
 # ------------------------------------------------------------------------------

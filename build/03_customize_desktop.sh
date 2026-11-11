@@ -2,11 +2,12 @@
 # ==============================================================================
 # KIAN-OS v3 Build System: Desktop, Installer & Recovery Staging (Phase 3)
 # Path: build/03_customize_desktop.sh
-# Description: Installs KWin Wayland, Plasma minimal, SDDM, Kvantum, fontconfig;
-#              deploys SDDM Wayland greeter; installs Inter Display & Vazirmatn;
-#              deploys kian-shell-switcher & Triple-Shell layouts; configures
-#              Calamares 3.3.x & hooks; deploys P2P sync services; installs
-#              kian-rollback, btrfs-apt-hook, 41_kian_snapshots, and boot watchdog.
+# Description: Installs KWin Wayland, Plasma 5.27 minimal, SDDM, Kvantum,
+#              pkexec/Polkit KDE agent, KDE Connect, LocalSend, Papirus icons;
+#              enforces Casper + SDDM Wayland autologin; configures Calamares
+#              3.3.x & post-install security cleanup; deploys Triple-Shell,
+#              Btrfs rollback engine, Dual-Kernel GRUB Watchdog (01 + 09),
+#              and rebuilds initramfs for all installed kernels at completion.
 # ==============================================================================
 set -euo pipefail
 
@@ -62,43 +63,82 @@ if [[ ! -d "${TARGET_ROOTFS}" ]]; then
     exit 1
 fi
 
+unmount_virtual_fs() {
+    local root="$1"
+    if [[ -d "${root}" ]]; then
+        umount -l "${root}/dev/pts" 2>/dev/null || true
+        umount -l "${root}/dev" 2>/dev/null || true
+        umount -l "${root}/proc" 2>/dev/null || true
+        umount -l "${root}/sys" 2>/dev/null || true
+        umount -l "${root}/run" 2>/dev/null || true
+    fi
+}
+
+trap 'unmount_virtual_fs "${TARGET_ROOTFS}"' EXIT ERR
+
+if [[ "${DRY_RUN}" != "1" ]]; then
+    log_info "Mounting virtual pseudo-filesystems (/dev, /proc, /sys, /run) for Phase 3 chroot..."
+    mountpoint -q "${TARGET_ROOTFS}/dev" || mount --bind /dev "${TARGET_ROOTFS}/dev"
+    mountpoint -q "${TARGET_ROOTFS}/dev/pts" || mount --bind /dev/pts "${TARGET_ROOTFS}/dev/pts"
+    mountpoint -q "${TARGET_ROOTFS}/proc" || mount -t proc proc "${TARGET_ROOTFS}/proc"
+    mountpoint -q "${TARGET_ROOTFS}/sys" || mount -t sysfs sys "${TARGET_ROOTFS}/sys"
+    mountpoint -q "${TARGET_ROOTFS}/run" || mount --bind /run "${TARGET_ROOTFS}/run"
+fi
+
 # ------------------------------------------------------------------------------
-# 1. In-Chroot Desktop & Graphics Stack Installation
+# 1. In-Chroot Desktop, Polkit, P2P Apps & Calamares Installation
 # ------------------------------------------------------------------------------
-log_step "Installing KWin Wayland, Minimal Plasma, SDDM, Kvantum & Calamares"
+log_step "Installing KWin Wayland, Plasma, SDDM, pkexec, KDE Connect, LocalSend & Calamares"
 
 if [[ "${DRY_RUN}" == "1" ]]; then
     log_info "[DRY-RUN] Simulating chroot package installation of desktop stack..."
-    log_info "[DRY-RUN] Packages: plasma-workspace-wayland kwin-wayland sddm calamares kvantum fontconfig"
+    log_info "[DRY-RUN] Packages: plasma-workspace-wayland kwin-wayland sddm pkexec kdeconnect calamares"
 else
     chroot "${TARGET_ROOTFS}" /usr/bin/env DEBIAN_FRONTEND=noninteractive bash -euo pipefail << 'CHROOT_EOF'
-apt-get update
-apt-get install -y --no-install-recommends \
+apt-get -o Acquire::Retries=3 update
+apt-get -o Acquire::Retries=3 install -y --no-install-recommends \
+    plasma-workspace \
     plasma-workspace-wayland \
     kwin-wayland \
-    plasma-desktop konsole dolphin plasma-discover plasma-discover-backend-flatpak flatpak plasma-nm plasma-pa systemsettings falkon ark vlc kate gwenview plymouth plymouth-theme-spinner \
-    sddm \
-    sddm-theme-breeze \
-    qt5-style-kvantum \
-    qt5-style-kvantum-themes \
-    fontconfig \
-    fonts-inter \
-    fonts-vazirmatn \
-    fonts-firacode \
-    calamares \
-    calamares-settings-ubuntu-common \
-    rsync \
-    efibootmgr \
-    dosfstools \
-    btrfs-progs
+    plasma-desktop \
+    konsole dolphin plasma-discover plasma-discover-backend-flatpak flatpak \
+    plasma-nm plasma-pa systemsettings falkon ark vlc kate gwenview \
+    plymouth plymouth-theme-spinner \
+    sddm sddm-theme-breeze \
+    pkexec polkitd polkit-kde-agent-1 \
+    kdeconnect \
+    libayatana-appindicator3-1 gir1.2-ayatanaappindicator3-0.1 libayatana-ido3-0.4-0 xdg-user-dirs \
+    qt5-style-kvantum qt5-style-kvantum-themes \
+    breeze-icon-theme breeze-gtk-theme kde-config-gtk-style papirus-icon-theme \
+    fontconfig fonts-inter fonts-vazirmatn fonts-firacode \
+    calamares calamares-settings-ubuntu-common \
+    rsync efibootmgr dosfstools btrfs-progs
 
-# Mask legacy X11 session desktop files so SDDM exclusively offers Wayland
+# Install Official LocalSend x86_64 .deb so localsend_app.desktop & /usr/bin/localsend_app are genuine
+echo ":: Installing LocalSend v1.18.2 x86_64 package..."
+curl -fsSL --retry 3 -o /tmp/localsend.deb \
+    "https://github.com/localsend/localsend/releases/download/v1.18.2/LocalSend-1.18.2-linux-x86-64.deb"
+dpkg -i /tmp/localsend.deb
+rm -f /tmp/localsend.deb
+ln -sfn /opt/localsend_app/localsend_app /usr/bin/localsend
+test -x /usr/bin/localsend_app
+test -f /usr/share/applications/localsend_app.desktop
+
+# Verify mandatory desktop & installer binaries exist right now (ZERO silent omissions!)
+test -x /usr/bin/pkexec
+test -x /usr/bin/calamares
+test -x /usr/bin/kwin_wayland
+test -x /usr/bin/startplasma-wayland
+test -x /usr/lib/x86_64-linux-gnu/libexec/kdeconnectd
+test -f /usr/share/wayland-sessions/plasmawayland.desktop
+
+# Mask legacy X11 session desktop files so SDDM exclusively offers Pure Wayland
 if [[ -f /usr/share/xsessions/plasma.desktop ]]; then
-    mv /usr/share/xsessions/plasma.desktop /usr/share/xsessions/plasma.desktop.disabled 2>/dev/null || true
+    mv /usr/share/xsessions/plasma.desktop /usr/share/xsessions/plasma.desktop.disabled
 fi
 
-# Set animated boot splash theme
-plymouth-set-default-theme -R spinner 2>/dev/null || true
+# Set animated boot splash theme without rebuilding initramfs prematurely
+plymouth-set-default-theme spinner || true
 
 apt-get clean
 rm -rf /var/lib/apt/lists/*
@@ -106,25 +146,94 @@ CHROOT_EOF
 fi
 
 # ------------------------------------------------------------------------------
-# 2. SDDM Pure Wayland Greeter Configuration
+# 2. Pure Wayland Environment, SDDM Greeter & Casper Autologin Protection
 # ------------------------------------------------------------------------------
-log_step "Configuring SDDM Pure Wayland Greeter"
+log_step "Configuring Pure Wayland Environment, SDDM Greeter & Casper Live Autologin"
 
-mkdir -p "${TARGET_ROOTFS}/etc/sddm.conf.d"
+mkdir -p "${TARGET_ROOTFS}/etc/profile.d" \
+         "${TARGET_ROOTFS}/etc/sddm.conf.d" \
+         "${TARGET_ROOTFS}/etc/initramfs-tools/scripts/casper-bottom"
+
+cat << 'EOF' > "${TARGET_ROOTFS}/etc/profile.d/kian-wayland.sh"
+# KIAN-OS v3 Pure Wayland Session Defaults
+export MOZ_ENABLE_WAYLAND=1
+export QT_AUTO_SCREEN_SCALE_FACTOR=1
+EOF
+chmod 0644 "${TARGET_ROOTFS}/etc/profile.d/kian-wayland.sh"
+
 if [[ -f "${DESKTOP_DIR}/sddm/wayland.conf" ]]; then
     log_info "Deploying ${DESKTOP_DIR}/sddm/wayland.conf..."
     run_cmd cp "${DESKTOP_DIR}/sddm/wayland.conf" "${TARGET_ROOTFS}/etc/sddm.conf.d/wayland.conf"
 else
-    log_info "Writing default SDDM Wayland configuration..."
     cat << 'EOF' > "${TARGET_ROOTFS}/etc/sddm.conf.d/wayland.conf"
 [General]
 DisplayServer=wayland
-GreeterEnvironment=QT_QPA_PLATFORM=wayland
+GreeterEnvironment=QT_WAYLAND_SHELL_INTEGRATION=layer-shell,QT_QPA_PLATFORM=wayland;xcb
 
 [Wayland]
 CompositorCommand=kwin_wayland --no-global-shortcuts --no-lockscreen --locale1
+SessionDir=/usr/share/wayland-sessions
+
+[Autologin]
+User=kian
+Session=plasmawayland.desktop
+Relogin=false
 EOF
 fi
+
+# Authoritative Casper-Bottom Hook (runs AFTER casper's 15autologin & 25adduser!)
+# Fixes Casper's Ubuntu bug where disabling /usr/share/xsessions/plasma.desktop wrote empty Session= into /etc/sddm.conf
+cat << 'EOF' > "${TARGET_ROOTFS}/etc/initramfs-tools/scripts/casper-bottom/99kian_autologin"
+#!/bin/sh
+PREREQ=""
+DESCRIPTION="Enforcing KIAN-OS v3 Pure Wayland Live Autologin..."
+
+prereqs() {
+    echo "$PREREQ"
+}
+
+case "$1" in
+    prereqs)
+        prereqs
+        exit 0
+        ;;
+esac
+
+. /scripts/casper-functions
+log_begin_msg "$DESCRIPTION"
+
+cat > /root/etc/sddm.conf << 'SDDM_EOF'
+[General]
+DisplayServer=wayland
+GreeterEnvironment=QT_WAYLAND_SHELL_INTEGRATION=layer-shell,QT_QPA_PLATFORM=wayland;xcb
+
+[Wayland]
+CompositorCommand=kwin_wayland --no-lockscreen --no-global-shortcuts --locale1
+SessionDir=/usr/share/wayland-sessions
+
+[X11]
+ServerPath=/bin/false
+XauthPath=/bin/false
+SessionDir=
+
+[Autologin]
+User=kian
+Session=plasmawayland.desktop
+Relogin=false
+SDDM_EOF
+
+mkdir -p /root/etc/sudoers.d
+echo "kian ALL=(ALL) NOPASSWD:ALL" > /root/etc/sudoers.d/99-kian-live
+chmod 0440 /root/etc/sudoers.d/99-kian-live
+
+if [ -d /root/home/kian ]; then
+    chroot /root chown -R kian:kian /home/kian 2>/dev/null || true
+fi
+
+log_end_msg
+exit 0
+EOF
+chmod +x "${TARGET_ROOTFS}/etc/initramfs-tools/scripts/casper-bottom/99kian_autologin"
 
 # ------------------------------------------------------------------------------
 # 3. Subpixel Typography & Font Rendering
@@ -139,11 +248,10 @@ if [[ -f "${DESKTOP_DIR}/fonts/50-kian-subpixel-typography.conf" ]]; then
 fi
 
 # ------------------------------------------------------------------------------
-# 4. Triple-Shell Interface Engine & Kvantum Dark Crystal Theme
+# 4. Triple-Shell Interface Engine & Complete Kvantum Theme Suite
 # ------------------------------------------------------------------------------
-log_step "Deploying Triple-Shell Engine, Layouts, and Kvantum Glass Theme"
+log_step "Deploying Triple-Shell Engine, Layouts, and All 3 Kvantum Glass Themes"
 
-# Deploy kian-shell-switcher CLI / DBus script
 mkdir -p "${TARGET_ROOTFS}/usr/local/bin" "${TARGET_ROOTFS}/usr/bin"
 if [[ -f "${DESKTOP_DIR}/triple-shell/kian-shell-switcher" ]]; then
     log_info "Deploying kian-shell-switcher..."
@@ -160,18 +268,34 @@ if [[ -d "${DESKTOP_DIR}/triple-shell/layouts" ]]; then
     run_cmd ln -sfn "/usr/share/kian/shell-layouts" "${TARGET_ROOTFS}/usr/share/kian/triple-shell/layouts"
 fi
 
-# Deploy Kvantum Glassmorphic Theme (KianGlass)
-mkdir -p "${TARGET_ROOTFS}/usr/share/Kvantum/KianGlass" "${TARGET_ROOTFS}/etc/skel/.config/Kvantum/KianGlass"
-if [[ -d "${DESKTOP_DIR}/triple-shell/kvantum/KianGlass" ]]; then
-    log_info "Deploying KianGlass Kvantum theme..."
-    run_cmd cp -r "${DESKTOP_DIR}/triple-shell/kvantum/KianGlass"/* "${TARGET_ROOTFS}/usr/share/Kvantum/KianGlass/"
-    run_cmd cp -r "${DESKTOP_DIR}/triple-shell/kvantum/KianGlass"/* "${TARGET_ROOTFS}/etc/skel/.config/Kvantum/KianGlass/"
-fi
+# Deploy All 3 Kvantum Themes (KianGlass, FluentDark, KianAquaGlass) with SVG + kvconfig
+for kv_theme in KianGlass FluentDark KianAquaGlass; do
+    if [[ -d "${DESKTOP_DIR}/triple-shell/kvantum/${kv_theme}" ]]; then
+        log_info "Deploying ${kv_theme} Kvantum theme..."
+        mkdir -p "${TARGET_ROOTFS}/usr/share/Kvantum/${kv_theme}" "${TARGET_ROOTFS}/etc/skel/.config/Kvantum/${kv_theme}"
+        run_cmd cp -r "${DESKTOP_DIR}/triple-shell/kvantum/${kv_theme}"/* "${TARGET_ROOTFS}/usr/share/Kvantum/${kv_theme}/"
+        run_cmd cp -r "${DESKTOP_DIR}/triple-shell/kvantum/${kv_theme}"/* "${TARGET_ROOTFS}/etc/skel/.config/Kvantum/${kv_theme}/"
+    fi
+done
 
-# Set default Kvantum configuration to KianGlass
 cat << 'EOF' > "${TARGET_ROOTFS}/etc/skel/.config/Kvantum/kvantum.kvconfig"
 [General]
 theme=KianGlass
+EOF
+
+mkdir -p "${TARGET_ROOTFS}/etc/skel/.config/kian"
+echo "kian-native" > "${TARGET_ROOTFS}/etc/skel/.config/kian/current-shell"
+
+cat << 'EOF' > "${TARGET_ROOTFS}/etc/skel/.config/kdeglobals"
+[General]
+ColorScheme=BreezeDark
+widgetStyle=kvantum-dark
+
+[Icons]
+Theme=Papirus-Dark
+
+[KDE]
+LookAndFeelPackage=org.kde.breezedark.desktop
 EOF
 
 # ------------------------------------------------------------------------------
@@ -181,21 +305,19 @@ log_step "Configuring Calamares 3.3.x Installer, Modules, and Hooks"
 
 mkdir -p "${TARGET_ROOTFS}/etc/calamares/modules" \
          "${TARGET_ROOTFS}/usr/share/calamares/hooks" \
-         "${TARGET_ROOTFS}/usr/lib/calamares/hooks"
+         "${TARGET_ROOTFS}/usr/lib/calamares/hooks" \
+         "${TARGET_ROOTFS}/usr/sbin"
 
-# Deploy settings.conf
 if [[ -f "${INSTALLER_DIR}/calamares/settings.conf" ]]; then
     log_info "Deploying Calamares settings.conf..."
     run_cmd cp "${INSTALLER_DIR}/calamares/settings.conf" "${TARGET_ROOTFS}/etc/calamares/settings.conf"
 fi
 
-# Deploy Calamares Modules
 if [[ -d "${INSTALLER_DIR}/calamares/modules" ]]; then
-    log_info "Deploying Calamares module descriptors..."
+    log_info "Deploying Calamares module descriptors (including displaymanager.conf & mount.conf)..."
     run_cmd cp -r "${INSTALLER_DIR}/calamares/modules"/* "${TARGET_ROOTFS}/etc/calamares/modules/"
 fi
 
-# Deploy Calamares Branding
 if [[ -d "${INSTALLER_DIR}/calamares/branding" ]]; then
     log_info "Deploying Calamares branding descriptors..."
     mkdir -p "${TARGET_ROOTFS}/etc/calamares/branding" "${TARGET_ROOTFS}/usr/share/calamares/branding"
@@ -203,16 +325,19 @@ if [[ -d "${INSTALLER_DIR}/calamares/branding" ]]; then
     run_cmd cp -r "${INSTALLER_DIR}/calamares/branding"/* "${TARGET_ROOTFS}/usr/share/calamares/branding/"
 fi
 
-# Deploy Calamares Hooks to both /usr/share/calamares/hooks and /usr/lib/calamares/hooks
 if [[ -d "${INSTALLER_DIR}/calamares/hooks" ]]; then
     log_info "Deploying Calamares pre/post-install hooks..."
     run_cmd cp -r "${INSTALLER_DIR}/calamares/hooks"/* "${TARGET_ROOTFS}/usr/share/calamares/hooks/"
     run_cmd cp -r "${INSTALLER_DIR}/calamares/hooks"/* "${TARGET_ROOTFS}/usr/lib/calamares/hooks/"
-    run_cmd chmod +x "${TARGET_ROOTFS}/usr/share/calamares/hooks"/*.sh 2>/dev/null || true
-    run_cmd chmod +x "${TARGET_ROOTFS}/usr/lib/calamares/hooks"/*.sh 2>/dev/null || true
+    if [[ -f "${INSTALLER_DIR}/calamares/hooks/post-install-drivers-and-clean.sh" ]]; then
+        run_cmd cp "${INSTALLER_DIR}/calamares/hooks/post-install-drivers-and-clean.sh" "${TARGET_ROOTFS}/usr/sbin/post-install-drivers-and-clean.sh"
+        run_cmd chmod +x "${TARGET_ROOTFS}/usr/sbin/post-install-drivers-and-clean.sh"
+    fi
+    run_cmd chmod +x "${TARGET_ROOTFS}/usr/share/calamares/hooks"/*.sh
+    run_cmd chmod +x "${TARGET_ROOTFS}/usr/lib/calamares/hooks"/*.sh
 fi
 
-# Deploy Live Desktop Launcher for Calamares
+# Deploy Live Desktop Launcher for Calamares & sync /etc/skel -> /home/kian
 mkdir -p "${TARGET_ROOTFS}/etc/skel/Desktop" "${TARGET_ROOTFS}/home/kian/Desktop"
 cat << 'EOF' > "${TARGET_ROOTFS}/etc/skel/Desktop/calamares.desktop"
 [Desktop Entry]
@@ -221,16 +346,19 @@ Version=1.0
 Name=Install Kian-OS v3
 GenericName=Live Operating System Installer
 Comment=Install KIAN-OS v3 cleanly to disk with automated Btrfs layout
-Exec=pkexec /usr/bin/calamares
+Exec=pkexec env DISPLAY=$DISPLAY WAYLAND_DISPLAY=$WAYLAND_DISPLAY XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR QT_QPA_PLATFORM=wayland;xcb /usr/bin/calamares
 Icon=calamares
 Terminal=false
 Categories=Qt;System;
 StartupNotify=true
 EOF
 chmod +x "${TARGET_ROOTFS}/etc/skel/Desktop/calamares.desktop"
-cp "${TARGET_ROOTFS}/etc/skel/Desktop/calamares.desktop" "${TARGET_ROOTFS}/home/kian/Desktop/" 2>/dev/null || true
-chmod +x "${TARGET_ROOTFS}/home/kian/Desktop/"*.desktop 2>/dev/null || true
-chown -R 1000:1000 "${TARGET_ROOTFS}/home/kian" 2>/dev/null || true
+
+if [[ "${DRY_RUN}" != "1" ]]; then
+    cp -a "${TARGET_ROOTFS}/etc/skel/." "${TARGET_ROOTFS}/home/kian/"
+    chmod +x "${TARGET_ROOTFS}/home/kian/Desktop/"*.desktop
+    chown -R 1000:1000 "${TARGET_ROOTFS}/home/kian"
+fi
 
 # ------------------------------------------------------------------------------
 # 6. Local Offline P2P Synchronization Services
@@ -238,30 +366,29 @@ chown -R 1000:1000 "${TARGET_ROOTFS}/home/kian" 2>/dev/null || true
 log_step "Deploying Offline P2P Sync Units (LocalSend & KDE Connect Clipboard)"
 
 mkdir -p "${TARGET_ROOTFS}/usr/lib/systemd/user" \
-         "${TARGET_ROOTFS}/etc/systemd/user/default.target.wants" \
          "${TARGET_ROOTFS}/etc/systemd/user/graphical-session.target.wants"
 
 if [[ -f "${DESKTOP_DIR}/sync/localsend.service" ]]; then
-    log_info "Deploying localsend.service (user unit)..."
+    log_info "Deploying localsend.service (user graphical-session unit)..."
     run_cmd cp "${DESKTOP_DIR}/sync/localsend.service" "${TARGET_ROOTFS}/usr/lib/systemd/user/localsend.service"
-    ln -sf "/usr/lib/systemd/user/localsend.service" "${TARGET_ROOTFS}/etc/systemd/user/default.target.wants/localsend.service"
+    ln -sf "/usr/lib/systemd/user/localsend.service" "${TARGET_ROOTFS}/etc/systemd/user/graphical-session.target.wants/localsend.service"
 fi
 
 if [[ -f "${DESKTOP_DIR}/sync/kdeconnect-clipboard.service" ]]; then
-    log_info "Deploying kdeconnect-clipboard.service (user unit)..."
+    log_info "Deploying kdeconnect-clipboard.service (user graphical-session unit)..."
     run_cmd cp "${DESKTOP_DIR}/sync/kdeconnect-clipboard.service" "${TARGET_ROOTFS}/usr/lib/systemd/user/kdeconnect-clipboard.service"
     ln -sf "/usr/lib/systemd/user/kdeconnect-clipboard.service" "${TARGET_ROOTFS}/etc/systemd/user/graphical-session.target.wants/kdeconnect-clipboard.service"
 fi
 
 # ------------------------------------------------------------------------------
-# 7. Btrfs Snapshot Engine, Rollback CLI & GRUB Watchdog
+# 7. Btrfs Snapshot Engine, Rollback CLI & Dual-Kernel GRUB Watchdog
 # ------------------------------------------------------------------------------
-log_step "Deploying Btrfs Rollback Engine, APT Snapshot Hooks & GRUB Watchdog"
+log_step "Deploying Btrfs Rollback Engine, APT Snapshot Hooks & Dual-Kernel GRUB Watchdog"
 
 mkdir -p "${TARGET_ROOTFS}/usr/lib/kian" "${TARGET_ROOTFS}/etc/apt/apt.conf.d" \
-         "${TARGET_ROOTFS}/etc/grub.d" "${TARGET_ROOTFS}/etc/initramfs-tools/scripts/init-bottom"
+         "${TARGET_ROOTFS}/etc/grub.d" "${TARGET_ROOTFS}/etc/default" \
+         "${TARGET_ROOTFS}/etc/initramfs-tools/scripts/init-bottom"
 
-# Deploy kian-rollback CLI
 if [[ -f "${SCRIPTS_DIR}/kian-rollback" ]]; then
     log_info "Deploying kian-rollback utility..."
     run_cmd cp "${SCRIPTS_DIR}/kian-rollback" "${TARGET_ROOTFS}/usr/local/bin/kian-rollback"
@@ -269,7 +396,6 @@ if [[ -f "${SCRIPTS_DIR}/kian-rollback" ]]; then
     run_cmd chmod +x "${TARGET_ROOTFS}/usr/local/bin/kian-rollback" "${TARGET_ROOTFS}/usr/bin/kian-rollback"
 fi
 
-# Deploy btrfs-apt-hook & apt configuration
 if [[ -f "${SCRIPTS_DIR}/btrfs-apt-hook" ]]; then
     log_info "Deploying btrfs-apt-hook..."
     run_cmd cp "${SCRIPTS_DIR}/btrfs-apt-hook" "${TARGET_ROOTFS}/usr/lib/kian/btrfs-apt-hook"
@@ -282,20 +408,31 @@ DPkg::Pre-Invoke  { "/usr/lib/kian/btrfs-apt-hook pre"; };
 DPkg::Post-Invoke { "/usr/lib/kian/btrfs-apt-hook post"; };
 EOF
 
-# Deploy dynamic GRUB snapshot menu generator
 if [[ -f "${SCRIPTS_DIR}/41_kian_snapshots" ]]; then
     log_info "Deploying 41_kian_snapshots GRUB menu generator..."
     run_cmd cp "${SCRIPTS_DIR}/41_kian_snapshots" "${TARGET_ROOTFS}/etc/grub.d/41_kian_snapshots"
     run_cmd chmod +x "${TARGET_ROOTFS}/etc/grub.d/41_kian_snapshots"
 fi
 
-# Deploy Dual-Kernel GRUB Bootcounter Watchdog
+# Authoritative /etc/default/grub with Kian-OS v3 kernel command line & panic=10 watchdog trigger
+cat << 'EOF' > "${TARGET_ROOTFS}/etc/default/grub"
+GRUB_DEFAULT="kian_primary"
+GRUB_TIMEOUT_STYLE=menu
+GRUB_TIMEOUT=3
+GRUB_DISTRIBUTOR="Kian-OS v3"
+GRUB_CMDLINE_LINUX_DEFAULT="quiet splash preempt=full split_lock_mitigate=0 panic=10"
+GRUB_CMDLINE_LINUX=""
+EOF
+
+# Deploy Dual-Kernel GRUB Bootcounter Watchdog (01_kian_watchdog runs AFTER 00_header!)
 cat << 'EOF' > "${TARGET_ROOTFS}/etc/grub.d/01_kian_watchdog"
 #!/bin/sh
 set -e
 cat << 'GRUB_WATCHDOG'
 # KIAN-OS v3 Dual-Kernel Bootcounter Watchdog
-load_env
+if [ -s $prefix/grubenv ]; then
+    load_env
+fi
 
 if [ -z "${bootcount}" ]; then
     set bootcount=0
@@ -306,7 +443,7 @@ fi
 
 if [ "${bootcount}" -ge "${bootlimit}" ]; then
     echo ":: [WARNING] KIAN-OS Watchdog: Boot limit reached (${bootcount}/${bootlimit})."
-    echo ":: Primary kernel (linux-kian v3) failed; failing over to Generic Fallback..."
+    echo ":: Primary kernel (linux-kian v3) failed; failing over to Generic LTS Fallback..."
     set default="kian_fallback_generic"
 else
     if [ "${bootcount}" = "2" ]; then
@@ -324,6 +461,75 @@ fi
 GRUB_WATCHDOG
 EOF
 chmod +x "${TARGET_ROOTFS}/etc/grub.d/01_kian_watchdog"
+
+# Deploy Dedicated Dual-Kernel Menu Generator (09_kian_kernels)
+# Guarantees menuentries with exact --id 'kian_primary' and --id 'kian_fallback_generic' ALWAYS exist in grub.cfg!
+cat << 'EOF' > "${TARGET_ROOTFS}/etc/grub.d/09_kian_kernels"
+#!/bin/sh
+set -e
+
+prefix="/usr"
+exec_prefix="/usr"
+datarootdir="/usr/share"
+. "$pkgdatadir/grub-mkconfig_lib"
+
+PRIMARY_KVER=$(ls -1 /boot/vmlinuz-*kian-v3* 2>/dev/null | sed 's|^/boot/vmlinuz-||' | sort -V | tail -n 1 || true)
+FALLBACK_KVER=$(ls -1 /boot/vmlinuz-*-generic 2>/dev/null | sed 's|^/boot/vmlinuz-||' | sort -V | tail -n 1 || true)
+
+if [ -z "${PRIMARY_KVER}" ] && [ -z "${FALLBACK_KVER}" ]; then
+    exit 0
+fi
+
+if [ "x${GRUB_DEVICE_UUID}" = "x" ] || [ "x${GRUB_DISABLE_LINUX_UUID}" = "xtrue" ]; then
+    LINUX_ROOT_DEVICE=${GRUB_DEVICE}
+else
+    LINUX_ROOT_DEVICE=UUID=${GRUB_DEVICE_UUID}
+fi
+
+ROOT_SUBVOL_FLAG=""
+if [ "x${GRUB_FS}" = "xbtrfs" ]; then
+    rootsubvol="$(make_system_path_relative_to_its_root /)"
+    rootsubvol="${rootsubvol#/}"
+    if [ -n "${rootsubvol}" ]; then
+        ROOT_SUBVOL_FLAG="rootflags=subvol=${rootsubvol}"
+    fi
+fi
+
+BOOT_PREP="$(prepare_grub_to_access_device "${GRUB_DEVICE_BOOT}" | grub_add_tab)"
+REL_BOOT="$(make_system_path_relative_to_its_root /boot)"
+
+emit_kian_entry() {
+    entry_title="$1"
+    entry_id="$2"
+    kver="$3"
+    extra_args="$4"
+    vmlinuz_rel="${REL_BOOT}/vmlinuz-${kver}"
+    initrd_rel="${REL_BOOT}/initrd.img-${kver}"
+    [ -f "/boot/vmlinuz-${kver}" ] || return 0
+    [ -f "/boot/initrd.img-${kver}" ] || return 0
+
+    cat << ENTRY_EOF
+menuentry '${entry_title}' --class kian-os --class gnu-linux --class gnu --class os --id '${entry_id}' {
+	load_video
+	gfxmode \$linux_gfx_mode
+	insmod gzio
+${BOOT_PREP}
+	echo 'Loading ${entry_title} (${kver}) ...'
+	linux ${vmlinuz_rel} root=${LINUX_ROOT_DEVICE} ro ${ROOT_SUBVOL_FLAG} ${GRUB_CMDLINE_LINUX} ${extra_args}
+	initrd ${initrd_rel}
+}
+ENTRY_EOF
+}
+
+if [ -n "${PRIMARY_KVER}" ]; then
+    emit_kian_entry "Kian-OS v3 (Superkernel ${PRIMARY_KVER} - BORE 1000Hz Wayland)" "kian_primary" "${PRIMARY_KVER}" "${GRUB_CMDLINE_LINUX_DEFAULT}"
+fi
+
+if [ -n "${FALLBACK_KVER}" ]; then
+    emit_kian_entry "Kian-OS v3 (Safe LTS Fallback ${FALLBACK_KVER})" "kian_fallback_generic" "${FALLBACK_KVER}" "quiet splash"
+fi
+EOF
+chmod +x "${TARGET_ROOTFS}/etc/grub.d/09_kian_kernels"
 
 # Deploy kian-boot-success.service
 if [[ -f "${SCRIPTS_DIR}/kian-boot-success.service" ]]; then
@@ -379,9 +585,9 @@ EOF
 chmod +x "${TARGET_ROOTFS}/etc/initramfs-tools/scripts/init-bottom/kian_overlayfs"
 
 # ------------------------------------------------------------------------------
-# 8. Full OS Branding & Identity (Kian-OS v3 Noble Edition)
+# 8. Full OS Branding & Final Initramfs Regeneration for All Installed Kernels
 # ------------------------------------------------------------------------------
-log_step "Applying Full Kian-OS v3 Operating System Branding & Identity"
+log_step "Applying Full Kian-OS v3 Branding & Regenerating Initramfs (With All Hooks)"
 
 cat << 'EOF' > "${TARGET_ROOTFS}/etc/os-release"
 NAME="Kian-OS"
@@ -409,4 +615,20 @@ echo "Kian-OS v3 (Noble Edition) \n \l" > "${TARGET_ROOTFS}/etc/issue"
 echo "Kian-OS v3 (Noble Edition) \n \l" > "${TARGET_ROOTFS}/etc/issue.net"
 echo "kian-os" > "${TARGET_ROOTFS}/etc/hostname"
 
-log_success "Phase 3: Desktop customization and installer assembly complete!"
+if [[ "${DRY_RUN}" != "1" ]]; then
+    log_info "Regenerating initramfs for ALL installed kernels so casper.conf, 99kian_autologin, kian_overlayfs & early SPI modules are embedded..."
+    chroot "${TARGET_ROOTFS}" /usr/bin/env DEBIAN_FRONTEND=noninteractive CASPER_GENERATE_UUID=1 bash -euo pipefail << 'CHROOT_INITRD_EOF'
+for kver in $(ls -1 /lib/modules | sort -V); do
+    echo ":: Building initramfs for kernel ${kver}..."
+    update-initramfs -c -k "${kver}" || update-initramfs -u -k "${kver}"
+    test -s "/boot/initrd.img-${kver}"
+done
+KVER_KIAN=$(ls -1 /lib/modules | grep -E "^6\.8\..*-kian-v3$" | sort -V | tail -n 1)
+test -n "${KVER_KIAN}"
+ln -sfn "vmlinuz-${KVER_KIAN}" /boot/vmlinuz
+ln -sfn "initrd.img-${KVER_KIAN}" /boot/initrd.img
+CHROOT_INITRD_EOF
+    unmount_virtual_fs "${TARGET_ROOTFS}"
+fi
+
+log_success "Phase 3: Desktop customization, security hardening, and initramfs regeneration complete!"

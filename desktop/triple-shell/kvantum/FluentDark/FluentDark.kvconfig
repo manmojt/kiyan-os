@@ -1,0 +1,51 @@
+# ==============================================================================
+# KIAN-OS v3 Kvantum Theme Engine: FluentDark (Windows 11 Fluent Slate)
+# Path: desktop/triple-shell/kvantum/FluentDark/FluentDark.kvconfig
+# ==============================================================================
+
+[%General]
+author=Kian OS Desktop Team
+comment=Windows 11 Fluent Dark Acrylic Slate Theme
+version=3.0.0
+composite=true
+blur_behind=true
+translucent_windows=true
+contrast=1.20
+saturation_boost=1.10
+reduce_window_opacity=18
+shadow_size=14
+shadow_color=#000000
+no_window_pattern=true
+active_tint_color=#0078d4
+inactive_tint_color=#181818
+tint_opacity=10
+glass=true
+dark_contrast=true
+
+[GeneralColors]
+window.color=#202020
+base.color=#1c1c1c
+alt.base.color=#262626
+text.color=#f3f3f3
+window.text.color=#f3f3f3
+highlight.color=#0078d4
+highlight.text.color=#ffffff
+tooltip.text.color=#f3f3f3
+tooltip.base.color=#202020
+link.color=#4cc2ff
+link.visited.color=#b4a0ff
+progress.indicator.text.color=#ffffff
+inactive.window.color=#1b1b1b
+inactive.base.color=#181818
+inactive.text.color=#9a9a9a
+inactive.window.text.color=#9a9a9a
+inactive.highlight.color=#2d2d2d
+inactive.highlight.text.color=#9a9a9a
+
+[Hacks]
+transparent_dolphin_view=true
+transparent_ktitle_label=true
+blur_active_surface=true
+blur_radius=8
+blur_depth=4
+respect_translucency=true

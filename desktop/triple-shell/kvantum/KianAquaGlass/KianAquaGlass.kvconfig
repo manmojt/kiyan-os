@@ -1,0 +1,51 @@
+# ==============================================================================
+# KIAN-OS v3 Kvantum Theme Engine: KianAquaGlass (macOS Cupertino Frosted Glass)
+# Path: desktop/triple-shell/kvantum/KianAquaGlass/KianAquaGlass.kvconfig
+# ==============================================================================
+
+[%General]
+author=Kian OS Desktop Team
+comment=Cupertino Aqua Frosted Dark Vibrancy Theme
+version=3.0.0
+composite=true
+blur_behind=true
+translucent_windows=true
+contrast=1.30
+saturation_boost=1.25
+reduce_window_opacity=26
+shadow_size=18
+shadow_color=#000000
+no_window_pattern=true
+active_tint_color=#0a84ff
+inactive_tint_color=#1e1e1e
+tint_opacity=12
+glass=true
+dark_contrast=true
+
+[GeneralColors]
+window.color=#1e1e22
+base.color=#18181c
+alt.base.color=#242429
+text.color=#f5f5f7
+window.text.color=#f5f5f7
+highlight.color=#0a84ff
+highlight.text.color=#ffffff
+tooltip.text.color=#f5f5f7
+tooltip.base.color=#1e1e22
+link.color=#2997ff
+link.visited.color=#bf5af2
+progress.indicator.text.color=#ffffff
+inactive.window.color=#19191c
+inactive.base.color=#151518
+inactive.text.color=#8e8e93
+inactive.window.text.color=#8e8e93
+inactive.highlight.color=#2c2c2e
+inactive.highlight.text.color=#8e8e93
+
+[Hacks]
+transparent_dolphin_view=true
+transparent_ktitle_label=true
+blur_active_surface=true
+blur_radius=10
+blur_depth=4
+respect_translucency=true

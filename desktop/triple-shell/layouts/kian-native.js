@@ -18,10 +18,10 @@ panel.floating = true;
 panel.alignment = "center";
 panel.hiding = "none";
 
-// 3. Application Launcher (Kickoff with Kian Glass Emblem)
+// 3. Application Launcher (Kickoff with Breeze Symbolic Icon)
 var kickoff = panel.addWidget("org.kde.plasma.kickoff");
 kickoff.currentConfigGroup = ["General"];
-kickoff.writeConfig("icon", "kian-emblem");
+kickoff.writeConfig("icon", "start-here-kde");
 kickoff.writeConfig("favoritesPortedToKAstats", true);
 
 // 4. Active Task Manager (Glass Cards with Neon Glow)
@@ -29,7 +29,7 @@ var taskmanager = panel.addWidget("org.kde.plasma.taskmanager");
 taskmanager.currentConfigGroup = ["General"];
 taskmanager.writeConfig("launchers", [
     "applications:org.kde.dolphin.desktop",
-    "applications:firefox.desktop",
+    "applications:org.kde.falkon.desktop",
     "applications:org.kde.konsole.desktop",
     "applications:localsend_app.desktop"
 ]);

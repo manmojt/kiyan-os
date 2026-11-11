@@ -6,19 +6,17 @@ Wants=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/localsend --hidden
+ExecStart=/usr/bin/localsend_app --hidden
 Restart=on-failure
 RestartSec=5
 KillMode=process
 
 # Wayland / Graphical session environment pass-through
-Environment="DISPLAY=:0" "WAYLAND_DISPLAY=wayland-0" "XDG_SESSION_TYPE=wayland" "XDG_CURRENT_DESKTOP=KDE"
+Environment="WAYLAND_DISPLAY=wayland-0" "XDG_SESSION_TYPE=wayland" "XDG_CURRENT_DESKTOP=KDE" "QT_QPA_PLATFORM=wayland;xcb"
 
 # Process & Sandbox Restrictions
 PrivateTmp=true
-ProtectSystem=strict
-ProtectHome=read-only
-ReadWritePaths=%h/Downloads
+ProtectSystem=full
 NoNewPrivileges=true
 
 [Install]

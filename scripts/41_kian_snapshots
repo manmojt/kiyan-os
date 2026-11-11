@@ -68,12 +68,12 @@ for snap in "${SNAPSHOTS[@]}"; do
 
     SNAP_TYPE="snap"
     TIMESTAMP="Unknown Date"
-    KERNEL="6.8.0-31-kian-v3"
+    KERNEL="6.8.12-kian-v3"
     TRIGGER="manual"
 
     if [[ -f "${META_FILE}" ]]; then
         TIMESTAMP=$(grep -o '"timestamp": *"[^"]*"' "${META_FILE}" | cut -d'"' -f4 || echo "Unknown Date")
-        KERNEL=$(grep -o '"kernel": *"[^"]*"' "${META_FILE}" | cut -d'"' -f4 || echo "6.8.0-31-kian-v3")
+        KERNEL=$(grep -o '"kernel": *"[^"]*"' "${META_FILE}" | cut -d'"' -f4 || echo "6.8.12-kian-v3")
         SNAP_TYPE=$(grep -o '"type": *"[^"]*"' "${META_FILE}" | cut -d'"' -f4 || echo "snap")
         TRIGGER=$(grep -o '"trigger": *"[^"]*"' "${META_FILE}" | cut -d'"' -f4 || echo "system")
     fi

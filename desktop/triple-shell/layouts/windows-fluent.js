@@ -34,7 +34,7 @@ var taskManager = taskbar.addWidget("org.kde.plasma.icontasks");
 taskManager.currentConfigGroup = ["General"];
 taskManager.writeConfig("launchers", [
     "applications:org.kde.dolphin.desktop",
-    "applications:firefox.desktop",
+    "applications:org.kde.falkon.desktop",
     "applications:org.kde.konsole.desktop",
     "applications:localsend_app.desktop",
     "applications:systemsettings.desktop"

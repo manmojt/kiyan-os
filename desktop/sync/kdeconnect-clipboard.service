@@ -6,7 +6,7 @@ After=graphical-session.target network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/libexec/kdeconnectd
+ExecStart=/usr/lib/x86_64-linux-gnu/libexec/kdeconnectd
 Restart=on-failure
 RestartSec=3
 Slice=session.slice

@@ -20,7 +20,7 @@ topBar.hiding = "none";
 // 2a. Kian System Menu (Apple-Style Top Left Launcher)
 var kianMenu = topBar.addWidget("org.kde.plasma.kickoff");
 kianMenu.currentConfigGroup = ["General"];
-kianMenu.writeConfig("icon", "apple-style-kian-logo");
+kianMenu.writeConfig("icon", "start-here-symbolic");
 kianMenu.writeConfig("favoritesPortedToKAstats", true);
 
 // 2b. Global DBus Application Menu (macOS AppMenu Registrar)
@@ -63,7 +63,7 @@ var dockTasks = dock.addWidget("org.kde.plasma.icontasks");
 dockTasks.currentConfigGroup = ["General"];
 dockTasks.writeConfig("launchers", [
     "applications:org.kde.dolphin.desktop",
-    "applications:firefox.desktop",
+    "applications:org.kde.falkon.desktop",
     "applications:org.kde.konsole.desktop",
     "applications:localsend_app.desktop",
     "applications:systemsettings.desktop"

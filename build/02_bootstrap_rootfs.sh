@@ -4,8 +4,9 @@
 # Path: build/02_bootstrap_rootfs.sh
 # Description: Debootstraps Ubuntu 24.04 LTS (Noble Numbat) minbase rootfs,
 #              configures apt repositories, locales, timezone, core packages,
-#              default 'kian' user, dual kernels (kian-v3 + stock generic), and
-#              GRUB bootcounter watchdog initialization.
+#              Casper live identity ('kian'), early LUKS keyboard modules,
+#              NTSync udev/autoload rules, sysctl performance tuning,
+#              dual kernels (kian-v3 + stock generic), and GRUB watchdog block.
 # ==============================================================================
 set -euo pipefail
 
@@ -13,7 +14,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/common.sh"
 
 TARGET_ROOTFS="${ROOTFS_DIR}"
-MIRROR_URL="http://archive.ubuntu.com/ubuntu/"
+MIRROR_URL="https://mirrors.edge.kernel.org/ubuntu/"
 CLEAN_FIRST=0
 
 show_usage() {
@@ -26,13 +27,13 @@ Options:
   --help, -h          Display this help message
   --dry-run           Simulate steps without debootstrap or chroot execution
   --rootfs-dir <DIR>  Target rootfs directory (default: ${ROOTFS_DIR})
-  --mirror <URL>      Ubuntu archive mirror URL (default: http://archive.ubuntu.com/ubuntu/)
+  --mirror <URL>      Ubuntu archive mirror URL (default: https://mirrors.edge.kernel.org/ubuntu/)
   --clean             Wipe target rootfs before bootstrapping
 
 Examples:
   sudo ./02_bootstrap_rootfs.sh
   ./02_bootstrap_rootfs.sh --dry-run
-  sudo ./02_bootstrap_rootfs.sh --clean --mirror http://mirrors.kernel.org/ubuntu/
+  sudo ./02_bootstrap_rootfs.sh --clean --mirror https://mirrors.edge.kernel.org/ubuntu/
 EOF
     exit "$exit_code"
 }
@@ -104,7 +105,7 @@ if [[ ! -f "${TARGET_ROOTFS}/bin/bash" ]]; then
         mkdir -p "${TARGET_ROOTFS}"/{bin,dev,proc,sys,run,etc/apt,boot/grub,var/lib/dpkg,home/kian,usr/bin,tmp/kian_pkgs}
         touch "${TARGET_ROOTFS}/bin/bash" "${TARGET_ROOTFS}/bin/sh"
     else
-        debootstrap --arch="${DISTRO_ARCH}" --variant=minbase "${DISTRO_CODENAME}" "${TARGET_ROOTFS}" "${MIRROR_URL}"
+        debootstrap --include=ca-certificates --arch="${DISTRO_ARCH}" --variant=minbase "${DISTRO_CODENAME}" "${TARGET_ROOTFS}" "${MIRROR_URL}"
     fi
 else
     log_info "Existing base system found in ${TARGET_ROOTFS}; skipping debootstrap."
@@ -136,37 +137,40 @@ cat << 'EOF' > "${TARGET_ROOTFS}/etc/hosts"
 ::1         localhost ip6-localhost ip6-loopback
 EOF
 
-# Copy resolv.conf for chroot network connectivity
-if [[ -f /etc/resolv.conf ]]; then
-    cp /etc/resolv.conf "${TARGET_ROOTFS}/etc/resolv.conf"
-else
-    cat << 'EOF' > "${TARGET_ROOTFS}/etc/resolv.conf"
+# Write clean deterministic DNS resolvers (never leak cloud runner search domains)
+rm -f "${TARGET_ROOTFS}/etc/resolv.conf"
+cat << 'EOF' > "${TARGET_ROOTFS}/etc/resolv.conf"
 nameserver 1.1.1.1
 nameserver 8.8.8.8
+nameserver 9.9.9.9
 EOF
-fi
+chmod 0644 "${TARGET_ROOTFS}/etc/resolv.conf"
 
-# Configure APT Repositories (Noble LTS)
+# Configure APT Repositories (Noble LTS over HTTPS)
 log_info "Writing Noble APT repositories (main, restricted, universe, multiverse)..."
 cat << EOF > "${TARGET_ROOTFS}/etc/apt/sources.list"
 deb ${MIRROR_URL} ${DISTRO_CODENAME} main restricted universe multiverse
 deb ${MIRROR_URL} ${DISTRO_CODENAME}-updates main restricted universe multiverse
-deb http://security.ubuntu.com/ubuntu/ ${DISTRO_CODENAME}-security main restricted universe multiverse
+deb https://security.ubuntu.com/ubuntu/ ${DISTRO_CODENAME}-security main restricted universe multiverse
 deb ${MIRROR_URL} ${DISTRO_CODENAME}-backports main restricted universe multiverse
 EOF
 
 # Stage Kian MOK Certificate for Secure Boot Trust Chain
-mkdir -p "${TARGET_ROOTFS}/etc/ssl/certs"
+mkdir -p "${TARGET_ROOTFS}/etc/ssl/certs" "${TARGET_ROOTFS}/usr/share/kian/keys"
 if [[ -f "${KEYS_DIR}/kian_mok.der" ]]; then
     cp "${KEYS_DIR}/kian_mok.der" "${TARGET_ROOTFS}/etc/ssl/certs/kian_mok.der"
+    cp "${KEYS_DIR}/kian_mok.der" "${TARGET_ROOTFS}/usr/share/kian/keys/kian_mok.der"
     log_info "Copied Kian MOK certificate to /etc/ssl/certs/kian_mok.der."
 fi
+if [[ -f "${KEYS_DIR}/kian_mok.pem" ]]; then
+    cp "${KEYS_DIR}/kian_mok.pem" "${TARGET_ROOTFS}/usr/share/kian/keys/kian_mok.pem"
+fi
 
-# Stage Kernel Packages into Chroot
+# Stage Kernel Packages into Chroot (Mandatory in real builds!)
 mkdir -p "${TARGET_ROOTFS}/tmp/kian_pkgs"
 FOUND_PKGS=0
 for pkg_dir in "${KERNEL_PKGS_DIR}" "${PROJECT_ROOT}/build/kernel_pkgs" "${PROJECT_ROOT}/build/out/kernel_pkgs"; do
-    if compgen -G "${pkg_dir}/*.deb" > /dev/null; then
+    if compgen -G "${pkg_dir}/linux-image*kian-v3*.deb" > /dev/null; then
         cp -u "${pkg_dir}"/*.deb "${TARGET_ROOTFS}/tmp/kian_pkgs/"
         log_success "Staged linux-kian v3 packages from ${pkg_dir} into chroot /tmp/kian_pkgs/."
         FOUND_PKGS=1
@@ -174,48 +178,115 @@ for pkg_dir in "${KERNEL_PKGS_DIR}" "${PROJECT_ROOT}/build/kernel_pkgs" "${PROJE
     fi
 done
 if [[ $FOUND_PKGS -eq 0 ]]; then
-    log_warn "No pre-compiled kernel deb packages found in ${KERNEL_PKGS_DIR}!"
+    if [[ "${DRY_RUN}" == "1" ]]; then
+        log_warn "[DRY-RUN] No pre-compiled kernel deb packages found in ${KERNEL_PKGS_DIR}."
+    else
+        log_error "FATAL: Mandatory linux-kian v3 .deb packages missing from ${KERNEL_PKGS_DIR}!"
+        exit 1
+    fi
 fi
 
 # ------------------------------------------------------------------------------
-# 5. Execute In-Chroot Provisioning & Package Installation
+# 5. Configure Hardware Modules, NTSync Udev & Sysctl Performance Tuning
 # ------------------------------------------------------------------------------
-log_step "Installing Core Packages, Dual Kernels, and Live User Configuration"
+log_step "Configuring Early Boot Input Modules, NTSync & Kernel Performance Sysctls"
+
+mkdir -p "${TARGET_ROOTFS}/etc/initramfs-tools" \
+         "${TARGET_ROOTFS}/etc/modules-load.d" \
+         "${TARGET_ROOTFS}/etc/udev/rules.d" \
+         "${TARGET_ROOTFS}/etc/sysctl.d"
+
+# Early-boot keyboard/SPI/HID drivers so LUKS2 passphrases work on MacBooks, Surface, and USB keyboards
+cat << 'EOF' > "${TARGET_ROOTFS}/etc/initramfs-tools/modules"
+# KIAN-OS v3 Early-Boot Input & Storage Modules (LUKS2 Passphrase Entry)
+usbhid
+hid_generic
+hid_apple
+spi_pxa2xx_platform
+intel_lpss_pci
+applespi
+surface_aggregator
+surface_aggregator_registry
+surface_aggregator_hub
+surface_hid_core
+surface_hid
+surface_kbd
+nvme
+btrfs
+overlay
+EOF
+
+# Auto-load NTSync synchronization primitive driver & expose /dev/ntsync (0666) for Wine/Proton
+cat << 'EOF' > "${TARGET_ROOTFS}/etc/modules-load.d/kian-ntsync.conf"
+# KIAN-OS v3 Windows NT Synchronization Primitive Driver
+ntsync
+EOF
+
+cat << 'EOF' > "${TARGET_ROOTFS}/etc/udev/rules.d/99-ntsync.rules"
+KERNEL=="ntsync", MODE="0666", TAG+="uaccess"
+EOF
+
+# KIAN-OS v3 Kernel & Network Performance Profile (BORE + BBRv3 + Split-Lock Gaming Mitigation Off)
+cat << 'EOF' > "${TARGET_ROOTFS}/etc/sysctl.d/99-kian-performance.conf"
+# KIAN-OS v3 Superkernel Tuning
+kernel.split_lock_mitigate = 0
+net.core.default_qdisc = fq
+net.ipv4.tcp_congestion_control = bbr
+vm.swappiness = 10
+vm.max_map_count = 2147483642
+EOF
+
+# ------------------------------------------------------------------------------
+# 6. Execute In-Chroot Provisioning & Package Installation
+# ------------------------------------------------------------------------------
+log_step "Installing Core Packages, Dual Kernels, Casper Identity, and Live User"
 
 if [[ "${DRY_RUN}" == "1" ]]; then
     log_info "[DRY-RUN] Simulating chroot package provisioning..."
     log_info "[DRY-RUN] Would install: systemd, udev, btrfs-progs, snapper, casper, dual-kernels, etc."
-    log_info "[DRY-RUN] Would create default user 'kian' with sudo privileges."
-    log_info "[DRY-RUN] Would initialize GRUB watchdog bootcounter block."
+    log_info "[DRY-RUN] Would configure /etc/casper.conf for user 'kian' and FLAVOUR='kian'."
 else
     chroot "${TARGET_ROOTFS}" /usr/bin/env DEBIAN_FRONTEND=noninteractive bash -euo pipefail << 'CHROOT_EOF'
-# Update package indices
-apt-get update
+apt-get -o Acquire::Retries=3 update
 
-# Core Base System & Utilities
-apt-get install -y --no-install-recommends \
-    systemd systemd-sysv udev dbus sudo locales tzdata \
-    network-manager wpasupplicant btrfs-progs snapper \
-    casper grub-efi-amd64-signed shim-signed \
-    pipewire wireplumber \
+# Core Base System, Bootloaders, Audio/Graphics, Firmware & Utilities
+apt-get -o Acquire::Retries=3 install -y --no-install-recommends \
+    ca-certificates apt-transport-https \
+    systemd systemd-sysv udev dbus dbus-user-session sudo locales tzdata \
+    network-manager wpasupplicant btrfs-progs snapper cryptsetup cryptsetup-initramfs \
+    casper user-setup \
+    grub-efi-amd64-bin grub-efi-amd64-signed shim-signed mokutil sbsigntool \
+    pipewire pipewire-pulse pipewire-alsa wireplumber \
     mesa-vulkan-drivers mesa-va-drivers vulkan-tools \
-    ubuntu-drivers-common \
-    curl wget nano iproute2 kmod ca-certificates \
+    ubuntu-drivers-common pciutils usbutils dmidecode \
+    curl wget nano iproute2 kmod zstd xz-utils \
     linux-image-generic linux-headers-generic
 
-# Install Kian v3 Kernel Debs if staged
-if compgen -G "/tmp/kian_pkgs/linux-image*.deb" > /dev/null; then
-    echo ":: Installing linux-kian v3 superkernel packages inside chroot..."
-    dpkg -i /tmp/kian_pkgs/*.deb || apt-get install -f -y
-    KVER=$(ls /lib/modules/ 2>/dev/null | grep "kian-v3" | head -n 1 || true)
-    if [[ -n "${KVER}" ]]; then
-        echo ":: Generating dedicated initramfs for superkernel ${KVER}..."
-        update-initramfs -c -k "${KVER}" || update-initramfs -u -k "${KVER}" || true
-    fi
-else
-    echo ":: [WARN] No linux-image deb packages found in /tmp/kian_pkgs/"
-fi
+# Authoritative Casper Live Configuration (prevents 'ubuntu' UID 1000 collision & .disk/info override)
+cat << 'EOF' > /etc/casper.conf
+export USERNAME="kian"
+export USERFULLNAME="Kian Live User"
+export HOST="kian-os"
+export BUILD_SYSTEM="Ubuntu"
+export FLAVOUR="kian"
+EOF
+
+# Install Verified Kian v3 Superkernel Debs (ZERO swallowed errors!)
+echo ":: Installing verified linux-kian v3 superkernel packages inside chroot..."
+dpkg -i /tmp/kian_pkgs/*.deb
 rm -rf /tmp/kian_pkgs
+
+KVER=$(ls /lib/modules/ 2>/dev/null | grep -E "^6\.8\..*-kian-v3$" | sort -V | tail -n 1)
+if [[ -z "${KVER}" ]]; then
+    echo "FATAL: linux-kian v3 modules directory not found in /lib/modules!" >&2
+    exit 1
+fi
+test -f "/boot/vmlinuz-${KVER}"
+echo ":: Verified superkernel installed in rootfs: /boot/vmlinuz-${KVER}"
+
+# Point unversioned /boot/vmlinuz & /boot/initrd.img symlinks to linux-kian v3 (not generic!)
+ln -sfn "vmlinuz-${KVER}" /boot/vmlinuz
+ln -sfn "initrd.img-${KVER}" /boot/initrd.img
 
 # Generate Locales & Set Timezone
 locale-gen en_US.UTF-8
@@ -225,21 +296,21 @@ dpkg-reconfigure --frontend noninteractive tzdata
 
 # Create Default 'kian' User with Essential Hardware Groups
 if ! id -u kian &>/dev/null; then
-    useradd -m -s /bin/bash -G sudo,adm,dialout,cdrom,audio,video,plugdev kian
+    useradd -m -u 1000 -s /bin/bash -G sudo,adm,dialout,cdrom,audio,video,render,plugdev,netdev kian
     echo "kian:kian" | chpasswd
 fi
 
-# Configure Live Session Sudoers Privileges
+# Configure Live Session Sudoers Privileges (explicitly purged by post-install-drivers-and-clean.sh!)
 mkdir -p /etc/sudoers.d
 echo "kian ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/99-kian-live
 chmod 0440 /etc/sudoers.d/99-kian-live
 
 # Initialize GRUB Environment Block for Watchdog
 mkdir -p /boot/grub
-grub-editenv /boot/grub/grubenv create 2>/dev/null || true
-grub-editenv /boot/grub/grubenv set bootcount=0 2>/dev/null || true
-grub-editenv /boot/grub/grubenv set boot_counter=0 2>/dev/null || true
-grub-editenv /boot/grub/grubenv set bootlimit=3 2>/dev/null || true
+grub-editenv /boot/grub/grubenv create
+grub-editenv /boot/grub/grubenv set bootcount=0
+grub-editenv /boot/grub/grubenv set boot_counter=0
+grub-editenv /boot/grub/grubenv set bootlimit=3
 
 # Clean APT caches to minimize footprint
 apt-get clean
@@ -248,7 +319,7 @@ CHROOT_EOF
 fi
 
 # ------------------------------------------------------------------------------
-# 6. Unmount Virtual Filesystems
+# 7. Unmount Virtual Filesystems
 # ------------------------------------------------------------------------------
 if [[ "${DRY_RUN}" != "1" ]]; then
     log_info "Unmounting virtual pseudo-filesystems..."

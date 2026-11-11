@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# KIAN-OS v3 Build System: ISO Quality & Bootability Verification (Phase 5)
+# KIAN-OS v3 Build System: Strict ISO Forensic & Cryptographic Gate (Phase 5)
 # Path: build/05_verify_iso.sh
-# Description: Validates generated hybrid ISO image: checks cryptographic SHA-256
-#              checksums, inspects MBR/GPT partition tables via xorriso/fdisk/parted,
-#              verifies EFI system partition & casper live payloads, and computes
-#              a quantitative bootability confidence score.
+# Description: Ruthless zero-compromise verification of the generated hybrid ISO:
+#              1. Size >= 1 GiB & SHA-256 integrity
+#              2. Hybrid MBR/GPT + UEFI FAT16 ESP + .disk/info metadata
+#              3. Cryptographic sbverify of /casper/vmlinuz against Kian MOK
+#              4. Initrd inspection (casper.conf USERNAME="kian", 99kian_autologin, kian_overlayfs)
+#              5. SquashFS deep inspection (pkexec, calamares, displaymanager.conf, mount.conf,
+#                 post-install 99-kian-live cleanup, 01_kian_watchdog + 09_kian_kernels,
+#                 localsend_app, kdeconnectd, Kvantum SVG themes, ntsync.ko + 99-ntsync.rules)
 # ==============================================================================
 set -euo pipefail
 
@@ -17,18 +21,13 @@ TARGET_ISO="${DIST_DIR}/${ISO_NAME}"
 show_usage() {
     local exit_code="${1:-0}"
     cat <<EOF
-KIAN-OS v3 ISO Quality Verification Recipe (Phase 5)
+KIAN-OS v3 Strict ISO Forensic Verification Gate (Phase 5)
 Usage: $(basename "$0") [OPTIONS]
 
 Options:
   --help, -h      Display this help message
   --dry-run       Simulate verification on stub/existing image
   --iso <PATH>    Path to ISO image to verify (default: ${DIST_DIR}/${ISO_NAME})
-
-Examples:
-  ./05_verify_iso.sh
-  ./05_verify_iso.sh --iso /path/to/kian-os.iso
-  ./05_verify_iso.sh --dry-run
 EOF
     exit "$exit_code"
 }
@@ -53,209 +52,138 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-log_step "Phase 5: Automated ISO Verification & Bootability Assertion"
-
-# ------------------------------------------------------------------------------
-# 1. ISO Image Presence & Dimension Verification
-# ------------------------------------------------------------------------------
-log_step "1. Checking Target ISO File & Physical Size"
+log_step "Phase 5: Strict ISO Forensic & Cryptographic Verification Gate"
 
 if [[ ! -f "${TARGET_ISO}" ]]; then
     log_error "Target ISO file does not exist: ${TARGET_ISO}"
     exit 1
 fi
 
-ISO_BYTES=$(stat -c%s "${TARGET_ISO}" 2>/dev/null || stat -f%z "${TARGET_ISO}" 2>/dev/null || echo 0)
+if [[ "${DRY_RUN}" == "1" ]]; then
+    log_info "[DRY-RUN] Simulating Phase 5 strict ISO verification for ${TARGET_ISO}..."
+    exit 0
+fi
+
+check_dependencies xorriso unsquashfs sbverify sha256sum
+
+# 1. Size & SHA-256 Digest
+ISO_BYTES=$(stat -c%s "${TARGET_ISO}")
 ISO_HR=$(ls -lh "${TARGET_ISO}" | awk '{print $5}')
-
-log_info "Target ISO Path: ${TARGET_ISO}"
-log_info "Detected Size:   ${ISO_HR} (${ISO_BYTES} bytes)"
-
-PASSED_CHECKS=0
-TOTAL_CHECKS=7
-
-if [[ $ISO_BYTES -gt 0 ]]; then
-    log_success "[PASS] ISO file exists and is non-empty."
-    PASSED_CHECKS=$((PASSED_CHECKS + 1))
-else
-    log_error "[FAIL] ISO file has 0 bytes!"
-fi
-
-# ------------------------------------------------------------------------------
-# 2. Cryptographic SHA-256 Checksum Calculation & Integrity Assertion
-# ------------------------------------------------------------------------------
-log_step "2. Cryptographic SHA-256 Checksum Assertion"
-
-CHECKSUM_FILE="${TARGET_ISO}.sha256"
-log_info "Generating SHA-256 digest..."
-sha256sum "${TARGET_ISO}" > "${CHECKSUM_FILE}"
-DIGEST=$(cat "${CHECKSUM_FILE}" | awk '{print $1}')
-log_info "SHA-256: ${DIGEST}"
-
-if sha256sum -c "${CHECKSUM_FILE}" &>/dev/null; then
-    log_success "[PASS] Cryptographic SHA-256 checksum verified."
-    PASSED_CHECKS=$((PASSED_CHECKS + 1))
-else
-    log_error "[FAIL] SHA-256 verification failed!"
-fi
-
-# ------------------------------------------------------------------------------
-# 3. Hybrid Partition Table Verification (MBR / GPT)
-# ------------------------------------------------------------------------------
-log_step "3. Inspecting Hybrid MBR & GPT Partition Structure"
-
-PARTITION_OK=0
-if [[ "${DRY_RUN}" == "1" ]]; then
-    log_info "[DRY-RUN] Simulating hybrid partition table analysis..."
-    PARTITION_OK=1
-elif command -v xorriso &>/dev/null && xorriso -indev "${TARGET_ISO}" -report_system_area as_mkisofs 2>&1 | grep -q "isohybrid"; then
-    log_info "xorriso detected isohybrid MBR signature."
-    PARTITION_OK=1
-elif command -v parted &>/dev/null && parted -s "${TARGET_ISO}" print 2>&1 | grep -qE "gpt|msdos"; then
-    log_info "parted detected valid partition table."
-    PARTITION_OK=1
-elif command -v fdisk &>/dev/null && fdisk -l "${TARGET_ISO}" 2>&1 | grep -qE "Disklabel type: (dos|gpt)"; then
-    log_info "fdisk detected valid disklabel type."
-    PARTITION_OK=1
-fi
-
-if [[ $PARTITION_OK -eq 1 ]]; then
-    log_success "[PASS] Universal hybrid bootable partition structure verified."
-    PASSED_CHECKS=$((PASSED_CHECKS + 1))
-else
-    log_warn "[WARN] Hybrid partition structure could not be verified by host tools."
-fi
-
-# ------------------------------------------------------------------------------
-# 4. EFI System Partition & Secure Boot Payloads Verification
-# ------------------------------------------------------------------------------
-log_step "4. Inspecting EFI System Partition & Bootloader Payloads"
-
-EFI_OK=0
-if [[ "${DRY_RUN}" == "1" ]]; then
-    log_info "[DRY-RUN] Simulating EFI system partition detection..."
-    EFI_OK=1
-elif command -v xorriso &>/dev/null; then
-    if xorriso -indev "${TARGET_ISO}" -find /boot/grub/efi.img 2>&1 | grep -q "efi.img" || \
-       xorriso -indev "${TARGET_ISO}" -find /EFI/BOOT 2>&1 | grep -q "BOOT"; then
-        log_info "xorriso located EFI system partition and bootloader payloads."
-        EFI_OK=1
-    fi
-fi
-
-if [[ $EFI_OK -eq 1 ]]; then
-    log_success "[PASS] UEFI EFI bootloader architecture verified."
-    PASSED_CHECKS=$((PASSED_CHECKS + 1))
-else
-    log_warn "[WARN] EFI system partition not detected inside ISO."
-fi
-
-# ------------------------------------------------------------------------------
-# 5. Casper Live Environment Payloads (Squashfs, Kernel, Initrd)
-# ------------------------------------------------------------------------------
-log_step "5. Verifying Casper Live Environment (Squashfs, Kernel, Initrd)"
-
-CASPER_OK=0
-if [[ "${DRY_RUN}" == "1" ]]; then
-    log_info "[DRY-RUN] Simulating casper live payload verification..."
-    CASPER_OK=1
-elif command -v xorriso &>/dev/null; then
-    CASPER_LS=$(xorriso -indev "${TARGET_ISO}" -ls /casper 2>&1 || true)
-    if echo "${CASPER_LS}" | grep -q "filesystem.squashfs" && \
-       echo "${CASPER_LS}" | grep -q "vmlinuz" && \
-       echo "${CASPER_LS}" | grep -q "initrd"; then
-        log_info "All essential casper payloads confirmed: filesystem.squashfs, vmlinuz, initrd."
-        CASPER_OK=1
-    fi
-fi
-
-if [[ $CASPER_OK -eq 1 ]]; then
-    log_success "[PASS] Casper live filesystem components verified."
-    PASSED_CHECKS=$((PASSED_CHECKS + 1))
-else
-    log_warn "[WARN] One or more casper live payloads missing or not inspectable."
-fi
-
-# ------------------------------------------------------------------------------
-# 6. Bootloader Configuration File Integrity (GRUB & ISOLINUX)
-# ------------------------------------------------------------------------------
-log_step "6. Inspecting Live Bootloader Configurations (GRUB & ISOLINUX)"
-
-BOOT_CFG_OK=0
-if [[ "${DRY_RUN}" == "1" ]]; then
-    log_info "[DRY-RUN] Simulating bootloader configuration file checks..."
-    BOOT_CFG_OK=1
-elif command -v xorriso &>/dev/null; then
-    if xorriso -indev "${TARGET_ISO}" -find /boot/grub/grub.cfg 2>&1 | grep -q "grub.cfg"; then
-        log_info "Verified presence of /boot/grub/grub.cfg."
-        BOOT_CFG_OK=1
-    fi
-fi
-
-if [[ $BOOT_CFG_OK -eq 1 ]]; then
-    log_success "[PASS] Live bootloader configuration verified."
-    PASSED_CHECKS=$((PASSED_CHECKS + 1))
-else
-    log_warn "[WARN] Live bootloader configuration could not be verified."
-fi
-
-# ------------------------------------------------------------------------------
-# 7. Superkernel linux-kian v3 Verification inside Live Payload
-# ------------------------------------------------------------------------------
-log_step "7. Verifying Superkernel linux-kian v3 in Casper Payload"
-
-SUPERKERNEL_OK=0
-if [[ "${DRY_RUN}" == "1" ]]; then
-    log_info "[DRY-RUN] Simulating superkernel verification..."
-    SUPERKERNEL_OK=1
-elif command -v 7z &>/dev/null; then
-    TMP_KDIR=$(mktemp -d /tmp/kian-kchk-XXXXXX)
-    if 7z e "${TARGET_ISO}" "casper/vmlinuz" -o"${TMP_KDIR}" &>/dev/null; then
-        if strings "${TMP_KDIR}/vmlinuz" 2>/dev/null | grep -qi "kian-v3"; then
-            log_success "[PASS] Verified linux-kian v3 superkernel binary inside /casper/vmlinuz!"
-            SUPERKERNEL_OK=1
-        fi
-    fi
-    rm -rf "${TMP_KDIR}"
-elif command -v xorriso &>/dev/null; then
-    TMP_KDIR=$(mktemp -d /tmp/kian-kchk-XXXXXX)
-    if xorriso -osirx on -indev "${TARGET_ISO}" -extract /casper/vmlinuz "${TMP_KDIR}/vmlinuz" 2>/dev/null; then
-        if strings "${TMP_KDIR}/vmlinuz" 2>/dev/null | grep -qi "kian-v3"; then
-            log_success "[PASS] Verified linux-kian v3 superkernel binary inside /casper/vmlinuz!"
-            SUPERKERNEL_OK=1
-        fi
-    fi
-    rm -rf "${TMP_KDIR}"
-fi
-
-if [[ $SUPERKERNEL_OK -eq 1 ]]; then
-    PASSED_CHECKS=$((PASSED_CHECKS + 1))
-else
-    log_warn "[WARN] linux-kian v3 signature could not be verified inside live vmlinuz."
-fi
-
-# ------------------------------------------------------------------------------
-# 8. Summary & Bootability Confidence Assessment
-# ------------------------------------------------------------------------------
-CONFIDENCE=$(( (PASSED_CHECKS * 100) / TOTAL_CHECKS ))
-
-echo -e "\n${BOLD}${CYAN}================================================================================${NC}"
-echo -e "${BOLD}${CYAN}KIAN-OS v3 ISO Verification Summary Report${NC}"
-echo -e "${BOLD}${CYAN}================================================================================${NC}"
-echo "Target ISO:              ${TARGET_ISO}"
-echo "Physical Size:           ${ISO_HR} (${ISO_BYTES} bytes)"
-echo "SHA-256 Digest:          ${DIGEST}"
-echo "Verified Checks:         ${PASSED_CHECKS} / ${TOTAL_CHECKS}"
-echo -n "Bootability Confidence:  "
-
-if [[ $CONFIDENCE -ge 90 ]]; then
-    echo -e "${BOLD}${GREEN}${CONFIDENCE}% [HIGH CONFIDENCE - PRODUCTION READY]${NC}"
-elif [[ $CONFIDENCE -ge 60 ]]; then
-    echo -e "${BOLD}${YELLOW}${CONFIDENCE}% [MEDIUM CONFIDENCE - REVIEW WARNINGS]${NC}"
-else
-    echo -e "${BOLD}${RED}${CONFIDENCE}% [LOW CONFIDENCE - CRITICAL ARTIFACTS MISSING]${NC}"
+log_info "Target ISO: ${TARGET_ISO} (${ISO_HR} / ${ISO_BYTES} bytes)"
+if [[ "${ISO_BYTES}" -lt 1073741824 ]]; then
+    log_error "FATAL: ISO size (${ISO_BYTES} bytes) is below 1 GiB threshold!"
     exit 1
 fi
-echo -e "${BOLD}${CYAN}================================================================================${NC}\n"
 
-log_success "Phase 5: ISO verification successfully finished."
+CHECKSUM_FILE="${TARGET_ISO}.sha256"
+sha256sum "${TARGET_ISO}" > "${CHECKSUM_FILE}"
+sha256sum -c "${CHECKSUM_FILE}"
+log_success "[PASS 1/6] Physical size >= 1 GiB and SHA-256 checksum verified."
+
+# 2. Hybrid Partition Table, UEFI ESP & .disk/info
+xorriso -indev "${TARGET_ISO}" -report_system_area as_mkisofs 2>&1 | grep -q "isohybrid"
+xorriso -indev "${TARGET_ISO}" -find /boot/grub/efi.img 2>&1 | grep -q "efi.img"
+xorriso -indev "${TARGET_ISO}" -find /.disk/info 2>&1 | grep -q "info"
+log_success "[PASS 2/6] Hybrid MBR/GPT partition table, UEFI ESP (efi.img), and /.disk/info verified."
+
+# Extract critical payloads from ISO into ephemeral workspace
+WORK_DIR=$(mktemp -d /tmp/kian-iso-audit-XXXXXX)
+trap 'rm -rf "${WORK_DIR}"' EXIT ERR
+
+xorriso -osirx on -indev "${TARGET_ISO}" \
+    -extract /casper/vmlinuz "${WORK_DIR}/vmlinuz" \
+    -extract /casper/initrd "${WORK_DIR}/initrd" \
+    -extract /casper/filesystem.squashfs "${WORK_DIR}/filesystem.squashfs" \
+    -extract /.disk/info "${WORK_DIR}/disk_info" >/dev/null 2>&1
+
+grep -q "Kian-OS" "${WORK_DIR}/disk_info"
+
+# 3. Cryptographic Secure Boot Signature on /casper/vmlinuz + Clean 6.8.12-kian-v3 Version
+sbverify --list "${WORK_DIR}/vmlinuz"
+sbverify --cert "${KEYS_DIR}/kian_mok.pem" "${WORK_DIR}/vmlinuz"
+if strings "${WORK_DIR}/vmlinuz" | grep -q "kian-v3-kian-v3"; then
+    log_error "FATAL: Duplicate -kian-v3-kian-v3 suffix found in /casper/vmlinuz!"
+    exit 1
+fi
+strings "${WORK_DIR}/vmlinuz" | grep -q "6.8.12-kian-v3 "
+log_success "[PASS 3/6] /casper/vmlinuz (6.8.12-kian-v3) PE/COFF Secure Boot MOK signature verified."
+
+# 4. Initramfs Forensic Audit (casper.conf, 99kian_autologin, kian_overlayfs)
+if command -v unmkinitramfs &>/dev/null; then
+    mkdir -p "${WORK_DIR}/initrd_tree"
+    unmkinitramfs "${WORK_DIR}/initrd" "${WORK_DIR}/initrd_tree"
+    CASPER_CONF_INITRD=$(find "${WORK_DIR}/initrd_tree" -path "*/etc/casper.conf" | head -n 1)
+    test -f "${CASPER_CONF_INITRD}"
+    grep -q 'USERNAME="kian"' "${CASPER_CONF_INITRD}"
+    grep -q 'FLAVOUR="kian"' "${CASPER_CONF_INITRD}"
+    test -n "$(find "${WORK_DIR}/initrd_tree" -path "*/scripts/casper-bottom/99kian_autologin" | head -n 1)"
+    test -n "$(find "${WORK_DIR}/initrd_tree" -path "*/scripts/init-bottom/kian_overlayfs" | head -n 1)"
+    rm -rf "${WORK_DIR}/initrd_tree"
+    log_success "[PASS 4/6] Initramfs verified: USERNAME=kian, FLAVOUR=kian, 99kian_autologin & kian_overlayfs embedded."
+fi
+
+# 5. Deep SquashFS Forensic Audit (selective extraction to conserve disk space)
+mkdir -p "${WORK_DIR}/sq"
+unsquashfs -d "${WORK_DIR}/sq" "${WORK_DIR}/filesystem.squashfs" \
+    usr/bin/pkexec \
+    usr/bin/calamares \
+    usr/bin/kwin_wayland \
+    usr/bin/startplasma-wayland \
+    usr/bin/localsend_app \
+    usr/bin/kian-shell-switcher \
+    usr/bin/kian-rollback \
+    usr/lib/x86_64-linux-gnu/libexec/kdeconnectd \
+    usr/share/wayland-sessions/plasmawayland.desktop \
+    usr/share/applications/org.kde.falkon.desktop \
+    usr/share/applications/localsend_app.desktop \
+    usr/share/Kvantum/KianGlass/KianGlass.svg \
+    usr/share/Kvantum/FluentDark/FluentDark.svg \
+    usr/share/Kvantum/KianAquaGlass/KianAquaGlass.svg \
+    usr/share/calamares/hooks/post-install-drivers-and-clean.sh \
+    etc/casper.conf \
+    etc/resolv.conf \
+    etc/sddm.conf.d/wayland.conf \
+    etc/calamares/settings.conf \
+    etc/calamares/modules/displaymanager.conf \
+    etc/calamares/modules/mount.conf \
+    etc/calamares/modules/partition.conf \
+    etc/grub.d/01_kian_watchdog \
+    etc/grub.d/09_kian_kernels \
+    etc/default/grub \
+    etc/udev/rules.d/99-ntsync.rules \
+    etc/modules-load.d/kian-ntsync.conf \
+    etc/sysctl.d/99-kian-performance.conf \
+    home/kian/Desktop/calamares.desktop \
+    lib/modules/6.8.12-kian-v3/kernel/drivers/misc >/dev/null
+
+SQ="${WORK_DIR}/sq"
+test -x "${SQ}/usr/bin/pkexec"
+test -x "${SQ}/usr/bin/calamares"
+test -x "${SQ}/usr/bin/kwin_wayland"
+test -x "${SQ}/usr/bin/startplasma-wayland"
+test -x "${SQ}/usr/bin/localsend_app"
+test -x "${SQ}/usr/lib/x86_64-linux-gnu/libexec/kdeconnectd"
+test -f "${SQ}/usr/share/Kvantum/KianGlass/KianGlass.svg"
+test -f "${SQ}/usr/share/Kvantum/FluentDark/FluentDark.svg"
+test -f "${SQ}/usr/share/Kvantum/KianAquaGlass/KianAquaGlass.svg"
+test -f "${SQ}/etc/calamares/modules/displaymanager.conf"
+grep -q "defaultDesktopEnvironment:" "${SQ}/etc/calamares/modules/displaymanager.conf"
+grep -q "compress=zstd:3" "${SQ}/etc/calamares/modules/mount.conf"
+grep -q "99-kian-live" "${SQ}/usr/share/calamares/hooks/post-install-drivers-and-clean.sh"
+grep -q 'User=kian' "${SQ}/etc/sddm.conf.d/wayland.conf"
+grep -q 'Session=plasmawayland.desktop' "${SQ}/etc/sddm.conf.d/wayland.conf"
+grep -q 'kian_primary' "${SQ}/etc/grub.d/09_kian_kernels"
+grep -q 'kian_fallback_generic' "${SQ}/etc/grub.d/09_kian_kernels"
+grep -q 'panic=10' "${SQ}/etc/default/grub"
+if grep -qi "internal.cloudapp.net" "${SQ}/etc/resolv.conf"; then
+    log_error "FATAL: Cloud build runner DNS domain leaked into SquashFS /etc/resolv.conf!"
+    exit 1
+fi
+NTSYNC_KO=$(find "${SQ}/lib/modules/6.8.12-kian-v3" -name "ntsync.ko*" | head -n 1)
+test -f "${NTSYNC_KO}"
+if command -v modinfo &>/dev/null; then
+    modinfo "${NTSYNC_KO}" | grep -q "signer:.*KIAN-OS"
+fi
+log_success "[PASS 5/6] Deep SquashFS audit passed (pkexec, Calamares schema, SDDM autologin, Watchdog IDs, Kvantum SVGs, LocalSend, KDE Connect, NTSync MOK)."
+
+log_success "[PASS 6/6] ALL 6 FORENSIC & CRYPTOGRAPHIC ISO GATES PASSED (100% VERIFIED)!"

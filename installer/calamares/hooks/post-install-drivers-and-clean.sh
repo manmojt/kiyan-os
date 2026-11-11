@@ -26,6 +26,7 @@ if [[ -z "$TARGET_ROOT" ]]; then
                  "$TARGET_ROOT/var/lib/apt/lists"
         touch "$TARGET_ROOT/etc/sddm.conf.d/autologin.conf" \
               "$TARGET_ROOT/etc/systemd/system/sddm.service.d/autologin.conf" \
+              "$TARGET_ROOT/etc/sudoers.d/99-kian-live" \
               "$TARGET_ROOT/etc/sudoers.d/99-live-autologin" \
               "$TARGET_ROOT/etc/sudoers.d/casper" \
               "$TARGET_ROOT/etc/skel/Desktop/calamares.desktop" \
@@ -110,17 +111,57 @@ if lspci 2>/dev/null | grep -qi "Broadcom.*Wireless"; then
 fi
 
 # ==============================================================================
-# PHASE 2: Strip Live SDDM Autologin Overrides
+# PHASE 2: Strip Live SDDM Autologin, NOPASSWD Sudo & Ephemeral Live Account
 # ==============================================================================
-echo "[Phase 2/5] Purging live-session autologin configurations..."
+echo "[Phase 2/5] Purging live-session autologin and ephemeral live credentials..."
 
 rm -f "$TARGET_ROOT/etc/sddm.conf.d/autologin.conf"
 rm -f "$TARGET_ROOT/etc/systemd/system/sddm.service.d/autologin.conf"
+rm -f "$TARGET_ROOT/etc/sudoers.d/99-kian-live"
 rm -f "$TARGET_ROOT/etc/sudoers.d/99-live-autologin"
 rm -f "$TARGET_ROOT/etc/sudoers.d/casper"
 rm -f "$TARGET_ROOT/etc/systemd/system/casper-md5check.service"
+rm -f "$TARGET_ROOT/etc/initramfs-tools/scripts/casper-bottom/99kian_autologin"
 
-echo "  [PASS] Live autologin and passwordless sudo configurations removed."
+# Rewrite /etc/sddm.conf.d/wayland.conf WITHOUT [Autologin] so installed system
+# uses pure Wayland greeter (or Calamares's explicit /etc/sddm.conf choice)
+if [[ -d "$TARGET_ROOT/etc/sddm.conf.d" ]]; then
+    cat << 'EOF' > "$TARGET_ROOT/etc/sddm.conf.d/wayland.conf"
+[General]
+DisplayServer=wayland
+GreeterEnvironment=QT_WAYLAND_SHELL_INTEGRATION=layer-shell,QT_QPA_PLATFORM=wayland;xcb
+HaltCommand=/bin/systemctl poweroff
+RebootCommand=/bin/systemctl reboot
+Numlock=none
+
+[Wayland]
+CompositorCommand=kwin_wayland --no-lockscreen --no-global-shortcuts --locale1
+SessionDir=/usr/share/wayland-sessions
+
+[X11]
+ServerPath=/bin/false
+XauthPath=/bin/false
+SessionDir=
+EnableHiDPI=false
+
+[Theme]
+Current=breeze
+CursorTheme=breeze_cursors
+Font=Inter Display,10,-1,5,50,0,0,0,0,0
+EOF
+fi
+
+# Remove the pre-seeded live 'kian' account ONLY when the user created their own
+# distinct account (UID >= 1000, != kian) during Calamares installation
+if [[ -f "$TARGET_ROOT/etc/passwd" ]]; then
+    NON_KIAN_USERS=$(awk -F: '$3 >= 1000 && $3 < 60000 && $1 != "kian" && $1 != "nobody" {print $1}' "$TARGET_ROOT/etc/passwd" || true)
+    if [[ -n "${NON_KIAN_USERS}" ]]; then
+        echo "  ==> Target user(s) detected (${NON_KIAN_USERS}); removing live 'kian' account..."
+        run_in_target userdel -rf kian 2>/dev/null || true
+    fi
+fi
+
+echo "  [PASS] Live autologin, 99-kian-live NOPASSWD sudo, and live user sanitized."
 
 # ==============================================================================
 # PHASE 3: Purge Live Desktop Shortcuts & Autostarts

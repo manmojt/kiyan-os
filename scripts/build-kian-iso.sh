@@ -19,9 +19,12 @@ mkdir -p "${PROJECT_ROOT}/build/kernel_pkgs" "${PROJECT_ROOT}/build/out/kernel_p
 
 # Download verified superkernel v3 packages if missing
 if ! ls "${PROJECT_ROOT}/build/kernel_pkgs"/linux-image*.deb &>/dev/null && ! ls "${PROJECT_ROOT}/build/out/kernel_pkgs"/linux-image*.deb &>/dev/null; then
-    echo ":: Fetching verified linux-kian v3 superkernel deb packages from GitHub Release 14..."
+    echo ":: Fetching verified linux-kian v3 superkernel deb packages from GitHub Release linux-kian-v3-build-20..."
     if command -v gh &>/dev/null; then
-        gh release download linux-kian-v3-build-14 -R manmojt/kiyan-os -D "${PROJECT_ROOT}/build/kernel_pkgs/" -p '*.deb' || true
+        gh release download linux-kian-v3-build-20 -R manmojt/kiyan-os -D "${PROJECT_ROOT}/build/kernel_pkgs/" -p '*.deb'
+    else
+        echo "ERROR: Pre-compiled linux-kian v3 .deb packages missing and gh CLI unavailable!" >&2
+        exit 1
     fi
 fi
 # Mirror packages across both staging trees
