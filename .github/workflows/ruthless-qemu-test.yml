@@ -12,7 +12,7 @@ jobs:
   qemu_ruthless_verification:
     name: Ruthless x86_64 QEMU Live Boot & Visual Audit
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
 
     steps:
       - name: Checkout Repository
@@ -21,7 +21,7 @@ jobs:
       - name: Install QEMU, OVMF & ImageMagick
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq qemu-system-x86 ovmf imagemagick netcat-openbsd
+          sudo apt-get install -y -qq qemu-system-x86 ovmf imagemagick python3
 
       - name: Download ISO from GitHub Release
         env:
@@ -48,7 +48,7 @@ jobs:
           sudo umount /tmp/iso_mount
           
           echo ":: Booting Superkernel directly in QEMU to capture full serial dmesg..."
-          timeout 60 qemu-system-x86_64             -m 2048             -smp 2             -kernel /tmp/boot_assets/vmlinuz             -initrd /tmp/boot_assets/initrd             -append "boot=casper console=ttyS0,115200 debug panic=10"             -nographic             -serial file:/tmp/kernel_direct_dmesg.log             -display none || true
+          timeout 50 qemu-system-x86_64             -m 2048             -smp 2             -kernel /tmp/boot_assets/vmlinuz             -initrd /tmp/boot_assets/initrd             -append "boot=casper console=ttyS0,115200 debug panic=10"             -nographic             -serial file:/tmp/kernel_direct_dmesg.log             -display none || true
           
           echo ":: Auditing Kernel Log:"
           grep -i -E '(Linux version|BORE|kian|casper|CPU|Memory)' /tmp/kernel_direct_dmesg.log | head -n 40
@@ -62,17 +62,41 @@ jobs:
           echo ":: Waiting 10 seconds for bootloader..."
           sleep 10
           
-          echo ":: Sending Enter key via QEMU monitor..."
-          echo "sendkey ret" | nc -U /tmp/qemu_monitor.sock || true
+          echo ":: Sending Enter key via python socket client..."
+          python3 -c '
+          import socket, time
+          try:
+              s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+              s.connect("/tmp/qemu_monitor.sock")
+              time.sleep(0.5)
+              s.sendall(b"sendkey ret\n")
+              time.sleep(0.5)
+              s.close()
+              print("Enter key sent successfully")
+          except Exception as e:
+              print("Socket error:", e)
+          '
           
-          echo ":: Allowing 30 seconds for live system boot..."
-          sleep 30
+          echo ":: Allowing 25 seconds for live system boot..."
+          sleep 25
           
           echo ":: Capturing Framebuffer Screenshot via screendump..."
-          echo "screendump /tmp/boot_screenshot.ppm" | nc -U /tmp/qemu_monitor.sock || true
-          sleep 2
+          python3 -c '
+          import socket, time
+          try:
+              s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+              s.connect("/tmp/qemu_monitor.sock")
+              time.sleep(0.5)
+              s.sendall(b"screendump /tmp/boot_screenshot.ppm\n")
+              time.sleep(1)
+              s.close()
+              print("Screendump command sent")
+          except Exception as e:
+              print("Screendump socket error:", e)
+          '
           
-          kill $QEMU_PID || true
+          kill $QEMU_PID 2>/dev/null || true
+          wait $QEMU_PID 2>/dev/null || true
           
           if [[ -f /tmp/boot_screenshot.ppm ]]; then
             echo ":: Converting Screenshot to PNG..."
