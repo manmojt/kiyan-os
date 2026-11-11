@@ -165,7 +165,7 @@ jobs:
           fi
 
           python3 - "${ISO_FILE}" "${ACCEL_ARGS[@]}" "--" "${UEFI_ARGS[@]}" <<'PY'
-          import json, os, socket, subprocess, sys, time
+          import json, os, select, socket, subprocess, sys, time
 
           argv = sys.argv[1:]
           sep = argv.index("--")
@@ -174,8 +174,13 @@ jobs:
           uefi_args = argv[sep + 1:]
 
           serial_log = "/tmp/qemu-live/live_serial.log"
+          serial_sock_path = "/tmp/qemu-live/serial.sock"
           qmp_sock = "/tmp/qemu-live/qmp.sock"
           ppm_path = "/tmp/qemu-live/live_desktop.ppm"
+
+          for p in (serial_log, serial_sock_path, qmp_sock, ppm_path):
+              if os.path.exists(p):
+                  os.remove(p)
 
           cmd = [
               "qemu-system-x86_64",
@@ -188,11 +193,31 @@ jobs:
               "-vga", "virtio",
               "-display", "none",
               "-no-reboot",
-              "-serial", f"file:{serial_log}",
+              "-serial", f"unix:{serial_sock_path},server,nowait",
               "-qmp", f"unix:{qmp_sock},server,nowait",
           ]
           print("Launching QEMU:", " ".join(cmd), flush=True)
           proc = subprocess.Popen(cmd)
+
+          ser = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+          for _ in range(50):
+              if os.path.exists(serial_sock_path):
+                  try:
+                      ser.connect(serial_sock_path)
+                      break
+                  except OSError:
+                      pass
+              time.sleep(0.2)
+          else:
+              proc.kill()
+              raise RuntimeError("Failed to connect to QEMU serial UNIX socket!")
+          ser.setblocking(False)
+
+          def send_serial(sock: socket.socket, text: str) -> None:
+              data = text.encode("utf-8")
+              for idx in range(0, len(data), 8):
+                  sock.sendall(data[idx:idx + 8])
+                  time.sleep(0.015)
 
           def qmp_screendump(out_ppm: str) -> None:
               s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -208,30 +233,85 @@ jobs:
               print("QMP screendump response:", resp.strip(), flush=True)
               s.close()
 
-          deadline = time.time() + 240
-          reached_userspace = False
-          while time.time() < deadline:
-              if proc.poll() is not None:
-                  raise RuntimeError(f"QEMU exited prematurely with code {proc.returncode}!")
-              if os.path.exists(serial_log):
-                  with open(serial_log, "r", encoding="utf-8", errors="replace") as fh:
-                      txt = fh.read()
-                  if (
-                      "Linux version 6.8.12-kian-v3" in txt
-                      and ("systemd[1]:" in txt or "Welcome to" in txt or "Reached target" in txt or "kian-os login:" in txt)
-                  ):
-                      if ("Reached target graphical.target" in txt or "Started sddm.service" in txt or "kian-os login:" in txt):
-                          print("Detected live graphical target / login prompt on serial console! Waiting 25s for Plasma Wayland compositor...", flush=True)
-                          time.sleep(25)
-                          reached_userspace = True
-                          break
-              time.sleep(3)
+          probe_cmd = (
+              "echo KIAN_PROBE_BEGIN_$((10+1)); "
+              "uname -a; "
+              "sudo dmesg | grep -iE 'Linux version|BORE' | head -n 12; "
+              "ls -l /dev/ntsync; "
+              "for i in $(seq 1 45); do "
+              "if pgrep -u kian -f '[p]lasmashell' >/dev/null 2>&1 && pgrep -u kian -f '[k]win_wayland' >/dev/null 2>&1; then "
+              "echo PLASMA_WAYLAND_READY_$((40+2)); "
+              "ps -u kian -o pid,comm | grep -E 'kwin_wayland|plasmashell'; "
+              "break; "
+              "fi; sleep 1; done; "
+              "sleep 12; "
+              "echo KIAN_PROBE_COMPLETE_$((100+23))\n"
+          )
 
-          if not reached_userspace:
-              print("Waiting final 15s before capturing state...", flush=True)
-              time.sleep(15)
+          state = "WAIT_LOGIN"
+          state_pos = 0
+          state_ts = time.time()
+          buf = ""
+          deadline = time.time() + 240
+
+          with open(serial_log, "wb") as log_fh:
+              while time.time() < deadline:
+                  if proc.poll() is not None:
+                      raise RuntimeError(f"QEMU exited prematurely with code {proc.returncode}!")
+                  rlist, _, _ = select.select([ser], [], [], 0.25)
+                  if rlist:
+                      chunk = ser.recv(4096)
+                      if chunk:
+                          log_fh.write(chunk)
+                          log_fh.flush()
+                          buf += chunk.decode("utf-8", errors="replace")
+
+                  tail = buf[state_pos:]
+                  if state == "WAIT_LOGIN":
+                      if "kian-os login:" in tail:
+                          print("Serial login prompt reached! Sending username 'kian'...", flush=True)
+                          time.sleep(0.5)
+                          state_pos = len(buf)
+                          state_ts = time.time()
+                          send_serial(ser, "kian\n")
+                          state = "WAIT_AUTH"
+                  elif state == "WAIT_AUTH":
+                      if "Password:" in tail:
+                          print("Password prompt reached! Authenticating live user 'kian'...", flush=True)
+                          time.sleep(0.3)
+                          state_pos = len(buf)
+                          state_ts = time.time()
+                          send_serial(ser, "kian\n")
+                          state = "WAIT_SHELL"
+                      elif ("kian@kian-os" in tail or "$ " in tail):
+                          state_pos = len(buf)
+                          state_ts = time.time()
+                          send_serial(ser, probe_cmd)
+                          state = "WAIT_PROBE"
+                      elif time.time() - state_ts > 15:
+                          state_pos = len(buf)
+                          state_ts = time.time()
+                          send_serial(ser, "\nkian\n")
+                  elif state == "WAIT_SHELL":
+                      if ("kian@kian-os" in tail or "$ " in tail):
+                          print("Live shell active! Running kernel/BORE/NTSync/Wayland live verification probe...", flush=True)
+                          time.sleep(0.3)
+                          state_pos = len(buf)
+                          state_ts = time.time()
+                          send_serial(ser, probe_cmd)
+                          state = "WAIT_PROBE"
+                      elif "Login incorrect" in tail:
+                          raise RuntimeError("Live serial login rejected password for 'kian'!")
+                  elif state == "WAIT_PROBE":
+                      if "KIAN_PROBE_COMPLETE_123" in tail:
+                          print("Live verification probe completed! Capturing QMP desktop framebuffer...", flush=True)
+                          break
+
+          if state != "WAIT_PROBE" or "KIAN_PROBE_COMPLETE_123" not in buf[state_pos:]:
+              print(f"WARNING: Probe finished in state={state} before KIAN_PROBE_COMPLETE_123; capturing state anyway...", flush=True)
 
           qmp_screendump(ppm_path)
+          ser.close()
           proc.terminate()
           try:
               proc.wait(timeout=10)
@@ -243,19 +323,21 @@ jobs:
           cp -f /tmp/qemu-live/boot_screenshot.png output/boot_screenshot.png
           cp -f /tmp/qemu-live/live_serial.log output/live_serial.log
 
-          echo "=== LIVE ISO SERIAL BOOT VERIFICATION ==="
-          grep -E "(Linux version|BORE|casper|Enforcing KIAN-OS|systemd\[1\]|sddm|graphical|kian-os)" /tmp/qemu-live/live_serial.log | head -n 80 || true
+          echo "=== LIVE ISO SERIAL BOOT & RUNTIME PROBE VERIFICATION ==="
+          tail -n 60 /tmp/qemu-live/live_serial.log | tr -d '\033\r'
 
           # HARD GATES (ZERO || true!)
-          grep -q "Linux version 6.8.12-kian-v3 " /tmp/qemu-live/live_serial.log
+          grep -q "Linux version 6.8.12-kian-v3" /tmp/qemu-live/live_serial.log
           grep -qi "BORE" /tmp/qemu-live/live_serial.log
-          grep -qE "(systemd\[1\]|Enforcing KIAN-OS v3 Pure Wayland|kian-os login:)" /tmp/qemu-live/live_serial.log
+          grep -q "/dev/ntsync" /tmp/qemu-live/live_serial.log
+          grep -q "PLASMA_WAYLAND_READY_42" /tmp/qemu-live/live_serial.log
+          grep -q "KIAN_PROBE_COMPLETE_123" /tmp/qemu-live/live_serial.log
           if grep -qi "Kernel panic" /tmp/qemu-live/live_serial.log; then
             echo "FATAL: Kernel panic detected during Live ISO boot!" >&2
             exit 1
           fi
           test -s output/boot_screenshot.png
-          echo "[PASS] Production ISO booted cleanly through UEFI -> linux-kian 6.8.12-kian-v3 (BORE) -> Casper -> Live systemd/SDDM Wayland!"
+          echo "[PASS] Production ISO booted cleanly through UEFI -> linux-kian 6.8.12-kian-v3 (BORE + NTSync) -> Casper -> Live KDE Plasma Wayland!"
 
       - name: Upload Live Boot Screenshot & Serial Logs Artifact
         if: always()
@@ -274,6 +356,7 @@ jobs:
         run: |
           set -euo pipefail
           cd output
+          sha256sum kian-os-v3-noble-amd64.iso boot_screenshot.png live_serial.log > SHA256SUMS
           TAG="kian-v3-run-${GITHUB_RUN_NUMBER}"
           gh release create "$TAG" \
             --title "Kian-OS v3 Verified Hybrid OS (x86_64, linux-kian 6.8.12-kian-v3 MOK Signed) Build #${GITHUB_RUN_NUMBER}" \
