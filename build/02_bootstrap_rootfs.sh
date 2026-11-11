@@ -294,9 +294,18 @@ update-locale LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
 ln -fs /usr/share/zoneinfo/UTC /etc/localtime
 dpkg-reconfigure --frontend noninteractive tzdata
 
-# Create Default 'kian' User with Essential Hardware Groups
+# Create Default 'kian' User with Essential Hardware Groups (guarantee UID/GID 1000)
 if ! id -u kian &>/dev/null; then
-    useradd -m -u 1000 -s /bin/bash -G sudo,adm,dialout,cdrom,audio,video,render,plugdev,netdev kian
+    EXISTING_1000=$(awk -F: '$3 == 1000 {print $1}' /etc/passwd || true)
+    if [[ -n "${EXISTING_1000}" && "${EXISTING_1000}" != "kian" ]]; then
+        userdel -rf "${EXISTING_1000}" 2>/dev/null || true
+    fi
+    EXISTING_GRP_1000=$(awk -F: '$3 == 1000 {print $1}' /etc/group || true)
+    if [[ -n "${EXISTING_GRP_1000}" && "${EXISTING_GRP_1000}" != "kian" ]]; then
+        groupdel "${EXISTING_GRP_1000}" 2>/dev/null || true
+    fi
+    groupadd -g 1000 kian 2>/dev/null || true
+    useradd -m -u 1000 -g 1000 -s /bin/bash -G sudo,adm,dialout,cdrom,audio,video,render,plugdev,netdev kian
     echo "kian:kian" | chpasswd
 fi
 

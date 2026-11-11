@@ -90,11 +90,11 @@ log_success "[PASS 2/6] Hybrid MBR/GPT partition table, UEFI ESP (efi.img), and 
 WORK_DIR=$(mktemp -d /tmp/kian-iso-audit-XXXXXX)
 trap 'rm -rf "${WORK_DIR}"' EXIT ERR
 
-xorriso -osirx on -indev "${TARGET_ISO}" \
+xorriso -osirrox on -indev "${TARGET_ISO}" \
     -extract /casper/vmlinuz "${WORK_DIR}/vmlinuz" \
     -extract /casper/initrd "${WORK_DIR}/initrd" \
     -extract /casper/filesystem.squashfs "${WORK_DIR}/filesystem.squashfs" \
-    -extract /.disk/info "${WORK_DIR}/disk_info" >/dev/null 2>&1
+    -extract /.disk/info "${WORK_DIR}/disk_info"
 
 grep -q "Kian-OS" "${WORK_DIR}/disk_info"
 
