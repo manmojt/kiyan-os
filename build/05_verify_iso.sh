@@ -123,13 +123,13 @@ if command -v unmkinitramfs &>/dev/null; then
 fi
 
 # 5. Deep SquashFS Forensic Audit (selective extraction to conserve disk space)
-mkdir -p "${WORK_DIR}/sq"
-unsquashfs -d "${WORK_DIR}/sq" "${WORK_DIR}/filesystem.squashfs" \
+unsquashfs -f -d "${WORK_DIR}/sq" "${WORK_DIR}/filesystem.squashfs" \
     usr/bin/pkexec \
     usr/bin/calamares \
     usr/bin/kwin_wayland \
     usr/bin/startplasma-wayland \
     usr/bin/localsend_app \
+    opt/localsend_app/localsend_app \
     usr/bin/kian-shell-switcher \
     usr/bin/kian-rollback \
     usr/lib/x86_64-linux-gnu/libexec/kdeconnectd \
@@ -161,7 +161,10 @@ test -x "${SQ}/usr/bin/pkexec"
 test -x "${SQ}/usr/bin/calamares"
 test -x "${SQ}/usr/bin/kwin_wayland"
 test -x "${SQ}/usr/bin/startplasma-wayland"
-test -x "${SQ}/usr/bin/localsend_app"
+test -L "${SQ}/usr/bin/localsend_app"
+test -x "${SQ}/opt/localsend_app/localsend_app"
+test -x "${SQ}/usr/bin/kian-shell-switcher"
+test -x "${SQ}/usr/bin/kian-rollback"
 test -x "${SQ}/usr/lib/x86_64-linux-gnu/libexec/kdeconnectd"
 test -f "${SQ}/usr/share/Kvantum/KianGlass/KianGlass.svg"
 test -f "${SQ}/usr/share/Kvantum/FluentDark/FluentDark.svg"
