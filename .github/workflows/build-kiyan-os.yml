@@ -187,6 +187,19 @@ jobs:
           def send_serial(sock, text: str) -> None:
               sock.sendall(text.encode("utf-8"))
 
+          def qmp_send_key(keys) -> None:
+              s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+              s.settimeout(5)
+              s.connect(qmp_sock)
+              f = s.makefile("r", encoding="utf-8")
+              _ = f.readline()
+              s.sendall(b'{"execute":"qmp_capabilities"}\n')
+              _ = f.readline()
+              payload = json.dumps({"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": k} for k in keys]}}) + "\n"
+              s.sendall(payload.encode("utf-8"))
+              _ = f.readline()
+              s.close()
+
           def qmp_screendump(out_ppm: str) -> None:
               s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
               s.settimeout(5)
@@ -208,15 +221,17 @@ jobs:
               "sudo /usr/share/calamares/hooks/pre-install-probe.sh >/tmp/preprobe.log 2>&1 && "
               "test -s /cdrom/casper/filesystem.squashfs && echo SQUASHFS_SOURCE_OK_$((50+5)); "
               "for i in $(seq 1 90); do "
-              "if pgrep -u kian -x gnome-shell >/dev/null 2>&1 && "
-              "(ls /run/user/1000/wayland-* >/dev/null 2>&1 || ls /tmp/.X11-unix/X* >/dev/null 2>&1); then "
+              "if pgrep -u kian -x gnome-shell >/dev/null 2>&1; then "
               "echo GNOME_WAYLAND_READY_$((40+2)); "
               "break; "
               "fi; sleep 1; done; "
-              "if ! ls /run/user/1000/wayland-* >/dev/null 2>&1 && ! ls /tmp/.X11-unix/X* >/dev/null 2>&1; then "
-              "sudo journalctl -b -n 120 --no-pager | grep -Ei 'gnome-shell|mutter|gdm|drm|wayland|error' || true; "
-              "ls -la /dev/dri /run/user/1000 || true; "
-              "fi; "
+              "for i in $(seq 1 60); do "
+              "if ls /run/user/1000/wayland-* >/dev/null 2>&1 || ls /tmp/.X11-unix/X* >/dev/null 2>&1; then "
+              "echo DISPLAY_SOCKET_OPEN_$((60+6)); "
+              "break; "
+              "fi; sleep 1; done; "
+              "ls -la /dev/dri /sys/class/drm /run/user/1000 /tmp/.X11-unix 2>&1 || true; "
+              "sudo journalctl -b --no-pager | grep -Ei 'gnome-shell|mutter|gdm|drm|virtio|wayland|error|fail' | tail -n 60 || true; "
               "for sid in $(loginctl list-sessions --no-legend | awk '$3==\"kian\" {print $1}'); do "
               "STYPE=$(loginctl show-session \"$sid\" -p Type --value 2>/dev/null || true); "
               "SVT=$(loginctl show-session \"$sid\" -p VTNr --value 2>/dev/null || true); "
@@ -309,18 +324,24 @@ jobs:
                           state = "WAIT_PROBE1"
                   elif state == "WAIT_PROBE1":
                       if "KIYAN_PROBE1_DONE_123" in tail:
+                          qmp_send_key(["shift"])
+                          time.sleep(1.5)
                           qmp_screendump(ppm_desk)
                           state_pos = len(buf)
                           send_serial(ser, probe2_cmd)
                           state = "WAIT_PROBE2"
                   elif state == "WAIT_PROBE2":
                       if "KIYAN_PROBE2_DONE_211" in tail:
+                          qmp_send_key(["shift"])
+                          time.sleep(1.0)
                           qmp_screendump(ppm_app)
                           state_pos = len(buf)
                           send_serial(ser, probe3_cmd)
                           state = "WAIT_PROBE3"
                   elif state == "WAIT_PROBE3":
                       if "KIYAN_PROBE3_DONE_345" in tail:
+                          qmp_send_key(["shift"])
+                          time.sleep(1.0)
                           qmp_screendump(ppm_cal)
                           break
 

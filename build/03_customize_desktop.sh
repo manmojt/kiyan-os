@@ -634,7 +634,6 @@ set -euo pipefail
 if [[ ${EUID:-$(id -u)} -eq 0 ]]; then
     mkdir -p -m 0700 /tmp/calamares-runtime-root
     chown 0:0 /tmp/calamares-runtime-root
-    export XDG_RUNTIME_DIR="/tmp/calamares-runtime-root"
 
     if [[ -z "${WAYLAND_DISPLAY:-}" ]]; then
         for wsock in /run/user/*/wayland-*; do
@@ -643,6 +642,17 @@ if [[ ${EUID:-$(id -u)} -eq 0 ]]; then
                 break
             fi
         done
+    fi
+
+    if [[ -n "${WAYLAND_DISPLAY:-}" && -S "${WAYLAND_DISPLAY}" ]]; then
+        ln -sfn "${WAYLAND_DISPLAY}" "/tmp/calamares-runtime-root/$(basename "${WAYLAND_DISPLAY}")"
+        export WAYLAND_DISPLAY="$(basename "${WAYLAND_DISPLAY}")"
+        export XDG_RUNTIME_DIR="/tmp/calamares-runtime-root"
+        export QT_QPA_PLATFORM="wayland;xcb"
+    else
+        unset WAYLAND_DISPLAY
+        export XDG_RUNTIME_DIR="/tmp/calamares-runtime-root"
+        export QT_QPA_PLATFORM="xcb"
     fi
 
     if [[ -z "${DISPLAY:-}" ]]; then
@@ -663,12 +673,6 @@ if [[ ${EUID:-$(id -u)} -eq 0 ]]; then
         done
     fi
 
-    if [[ -n "${WAYLAND_DISPLAY:-}" && -S "${WAYLAND_DISPLAY}" ]]; then
-        export QT_QPA_PLATFORM="wayland;xcb"
-    else
-        unset WAYLAND_DISPLAY
-        export QT_QPA_PLATFORM="xcb"
-    fi
     exec /usr/bin/calamares -D6 "$@" >>/tmp/calamares-launch.log 2>&1
 fi
 
