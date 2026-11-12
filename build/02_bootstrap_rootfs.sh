@@ -289,7 +289,7 @@ apt-get -o Acquire::Retries=3 install -y --no-install-recommends \
 
 # Add Liquorix Next-Gen Desktop Superkernel PPA (Linux 7.3, 1000Hz, PDS/ZEN, Native NTSync, Native TCP BBRv3, 2026 AMDGPU)
 install -d -m 0755 /etc/apt/keyrings
-curl -fsSL "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x9AE4078033F8024D" | gpg --dearmor -o /etc/apt/keyrings/liquorix.gpg
+curl -fsSL --retry 4 "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xA7654D8BAB1824F4D8F4E9D19352A0B69B72E6DF" | gpg --dearmor --yes -o /etc/apt/keyrings/liquorix.gpg
 chmod 0644 /etc/apt/keyrings/liquorix.gpg
 cat << 'LIQ_EOF' > /etc/apt/sources.list.d/liquorix.list
 deb [signed-by=/etc/apt/keyrings/liquorix.gpg] https://ppa.launchpadcontent.net/damentz/liquorix/ubuntu noble main
