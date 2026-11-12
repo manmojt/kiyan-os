@@ -159,9 +159,9 @@ if [[ "${DRY_RUN}" == "1" ]]; then
     touch "${SQUASHFS_FILE}"
     echo "1048576000" > "${TARGET_TREE}/casper/filesystem.size"
 else
-    log_info "Executing mksquashfs (blocksize: 1MB, zstd:19)..."
+    log_info "Executing mksquashfs (blocksize: 1MB, xz + x86 BCJ filter)..."
     mksquashfs "${TARGET_ROOTFS}" "${SQUASHFS_FILE}" \
-        -comp zstd -Xcompression-level 19 -b 1048576 -noappend
+        -comp xz -b 1048576 -Xbcj x86 -Xdict-size 100% -noappend
 
     # Calculate uncompressed filesystem size
     printf $(du -sx --block-size=1 "${TARGET_ROOTFS}" | cut -f1) > "${TARGET_TREE}/casper/filesystem.size"
@@ -181,7 +181,7 @@ insmod font
 insmod gfxterm
 
 menuentry "Try or Install KIAN-OS v3 (linux-kian v3, Pure Wayland)" --class kian --class os {
-    linux /casper/vmlinuz boot=casper preempt=full split_lock_mitigate=0 console=ttyS0,115200 console=tty0 quiet splash acpi_osi="Windows 2020" ---
+    linux /casper/vmlinuz boot=casper preempt=full split_lock_mitigate=0 nouveau.config=NvGspRm=1 console=ttyS0,115200 console=tty0 quiet splash acpi_osi="Windows 2020" ---
     initrd /casper/initrd
 }
 
@@ -308,7 +308,7 @@ MENU TITLE KIAN-OS v3 (Noble Numbat 24.04 LTS)
 LABEL kian
   MENU LABEL Try or Install KIAN-OS v3 (Pure Wayland)
   KERNEL /casper/vmlinuz
-  APPEND initrd=/casper/initrd boot=casper preempt=full split_lock_mitigate=0 console=ttyS0,115200 console=tty0 quiet splash acpi_osi="Windows 2020" ---
+  APPEND initrd=/casper/initrd boot=casper preempt=full split_lock_mitigate=0 nouveau.config=NvGspRm=1 console=ttyS0,115200 console=tty0 quiet splash acpi_osi="Windows 2020" ---
 
 LABEL safe
   MENU LABEL Try or Install KIAN-OS v3 (Safe Graphics Mode)

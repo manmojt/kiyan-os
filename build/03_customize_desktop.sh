@@ -100,6 +100,8 @@ apt-get -o Acquire::Retries=3 install -y --no-install-recommends \
     plasma-workspace \
     plasma-workspace-wayland \
     kwin-wayland \
+    xwayland x11-xserver-utils \
+    kscreen kde-cli-tools \
     plasma-desktop \
     konsole dolphin plasma-discover plasma-discover-backend-flatpak flatpak \
     plasma-nm plasma-pa systemsettings falkon ark vlc kate gwenview \
@@ -114,7 +116,7 @@ apt-get -o Acquire::Retries=3 install -y --no-install-recommends \
     calamares calamares-settings-ubuntu-common \
     rsync efibootmgr dosfstools btrfs-progs
 
-# Install Official LocalSend x86_64 .deb so localsend_app.desktop & /usr/bin/localsend_app are genuine
+# Install Official LocalSend v1.18.2 x86_64 .deb so localsend_app.desktop & /usr/bin/localsend_app are genuine
 echo ":: Installing LocalSend v1.18.2 x86_64 package..."
 curl -fsSL --retry 3 -o /tmp/localsend.deb \
     "https://github.com/localsend/localsend/releases/download/v1.18.2/LocalSend-1.18.2-linux-x86-64.deb"
@@ -124,10 +126,14 @@ ln -sfn /opt/localsend_app/localsend_app /usr/bin/localsend
 test -x /usr/bin/localsend_app
 test -f /usr/share/applications/localsend_app.desktop
 
-# Verify mandatory desktop & installer binaries exist right now (ZERO silent omissions!)
+# Verify mandatory desktop, display EDID/Wayland, and installer binaries exist right now (ZERO silent omissions!)
 test -x /usr/bin/pkexec
 test -x /usr/bin/calamares
 test -x /usr/bin/kwin_wayland
+test -x /usr/bin/Xwayland
+test -x /usr/bin/xhost
+test -x /usr/bin/kioclient5
+test -x /usr/bin/kscreen-doctor
 test -x /usr/bin/startplasma-wayland
 test -x /usr/lib/x86_64-linux-gnu/libexec/kdeconnectd
 test -f /usr/share/wayland-sessions/plasmawayland.desktop
@@ -154,10 +160,11 @@ mkdir -p "${TARGET_ROOTFS}/etc/profile.d" \
          "${TARGET_ROOTFS}/etc/sddm.conf.d" \
          "${TARGET_ROOTFS}/etc/initramfs-tools/scripts/casper-bottom"
 
+# NOTE: Never set QT_AUTO_SCREEN_SCALE_FACTOR=1 under KWin Wayland — KWin handles
+# native Wayland HiDPI fractional/integer scaling directly without bitmap blur!
 cat << 'EOF' > "${TARGET_ROOTFS}/etc/profile.d/kian-wayland.sh"
 # KIAN-OS v3 Pure Wayland Session Defaults
 export MOZ_ENABLE_WAYLAND=1
-export QT_AUTO_SCREEN_SCALE_FACTOR=1
 EOF
 chmod 0644 "${TARGET_ROOTFS}/etc/profile.d/kian-wayland.sh"
 
@@ -337,8 +344,98 @@ if [[ -d "${INSTALLER_DIR}/calamares/hooks" ]]; then
     run_cmd chmod +x "${TARGET_ROOTFS}/usr/lib/calamares/hooks"/*.sh
 fi
 
-# Deploy Live Desktop Launcher for Calamares & sync /etc/skel -> /home/kian
-mkdir -p "${TARGET_ROOTFS}/etc/skel/Desktop" "${TARGET_ROOTFS}/home/kian/Desktop"
+# Deploy Pure-Wayland + Xwayland Root Wrapper for Calamares Double-Click Launch
+mkdir -p "${TARGET_ROOTFS}/usr/bin" \
+         "${TARGET_ROOTFS}/usr/share/applications" \
+         "${TARGET_ROOTFS}/usr/share/polkit-1/actions" \
+         "${TARGET_ROOTFS}/etc/skel/.config" \
+         "${TARGET_ROOTFS}/etc/skel/Desktop" \
+         "${TARGET_ROOTFS}/home/kian/Desktop"
+
+cat << 'EOF' > "${TARGET_ROOTFS}/usr/bin/kian-install-os"
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ ${EUID:-$(id -u)} -eq 0 ]]; then
+    mkdir -p -m 0700 /tmp/calamares-runtime-root
+    chown 0:0 /tmp/calamares-runtime-root
+    export XDG_RUNTIME_DIR="/tmp/calamares-runtime-root"
+    exec /usr/bin/calamares -D6 "$@"
+fi
+
+USER_UID="$(id -u)"
+USER_RUNTIME="${XDG_RUNTIME_DIR:-/run/user/${USER_UID}}"
+WL_SOCK="${WAYLAND_DISPLAY:-wayland-0}"
+if [[ "${WL_SOCK}" != /* ]]; then
+    WL_ABS="${USER_RUNTIME}/${WL_SOCK}"
+else
+    WL_ABS="${WL_SOCK}"
+fi
+
+X_DISP="${DISPLAY:-}"
+if [[ -z "${X_DISP}" ]]; then
+    for xsock in /tmp/.X11-unix/X*; do
+        if [[ -S "${xsock}" ]]; then
+            X_DISP=":${xsock##*/X}"
+            break
+        fi
+    done
+fi
+
+if command -v xhost >/dev/null 2>&1 && [[ -n "${X_DISP}" ]]; then
+    DISPLAY="${X_DISP}" xhost +SI:localuser:root >/dev/null 2>&1 || true
+fi
+
+if sudo -n true 2>/dev/null; then
+    exec sudo env \
+        WAYLAND_DISPLAY="${WL_ABS}" \
+        DISPLAY="${X_DISP:-:0}" \
+        QT_QPA_PLATFORM="wayland;xcb" \
+        XDG_CURRENT_DESKTOP="KDE" \
+        KDE_FULL_SESSION="true" \
+        LANG="${LANG:-en_US.UTF-8}" \
+        /usr/bin/kian-install-os "$@"
+else
+    exec pkexec env \
+        WAYLAND_DISPLAY="${WL_ABS}" \
+        DISPLAY="${X_DISP:-:0}" \
+        QT_QPA_PLATFORM="wayland;xcb" \
+        XDG_CURRENT_DESKTOP="KDE" \
+        KDE_FULL_SESSION="true" \
+        LANG="${LANG:-en_US.UTF-8}" \
+        /usr/bin/kian-install-os "$@"
+fi
+EOF
+chmod 0755 "${TARGET_ROOTFS}/usr/bin/kian-install-os"
+
+cat << 'EOF' > "${TARGET_ROOTFS}/usr/share/polkit-1/actions/org.kian.install.policy"
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+  <vendor>Kian-OS</vendor>
+  <action id="org.kian.install.pkexec.run">
+    <description>Install Kian-OS v3</description>
+    <message>Authentication is required to install Kian-OS v3</message>
+    <icon_name>calamares</icon_name>
+    <defaults>
+      <allow_any>yes</allow_any>
+      <allow_inactive>yes</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/bin/kian-install-os</annotate>
+    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
+  </action>
+</policyconfig>
+EOF
+
+# Configure KDE KIO so double-clicking Desktop launchers executes immediately (never opens text editor / prompt)
+cat << 'EOF' > "${TARGET_ROOTFS}/etc/skel/.config/kiorc"
+[Executable scripts]
+behaviourOnLaunch=execute
+EOF
+
 cat << 'EOF' > "${TARGET_ROOTFS}/etc/skel/Desktop/calamares.desktop"
 [Desktop Entry]
 Type=Application
@@ -346,17 +443,21 @@ Version=1.0
 Name=Install Kian-OS v3
 GenericName=Live Operating System Installer
 Comment=Install KIAN-OS v3 cleanly to disk with automated Btrfs layout
-Exec=pkexec env DISPLAY=$DISPLAY WAYLAND_DISPLAY=$WAYLAND_DISPLAY XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR QT_QPA_PLATFORM=wayland;xcb /usr/bin/calamares
+Exec=/usr/bin/kian-install-os
+TryExec=/usr/bin/kian-install-os
 Icon=calamares
 Terminal=false
 Categories=Qt;System;
 StartupNotify=true
+X-KDE-SubstituteUID=false
 EOF
-chmod +x "${TARGET_ROOTFS}/etc/skel/Desktop/calamares.desktop"
+chmod 0755 "${TARGET_ROOTFS}/etc/skel/Desktop/calamares.desktop"
+cp -f "${TARGET_ROOTFS}/etc/skel/Desktop/calamares.desktop" "${TARGET_ROOTFS}/usr/share/applications/calamares.desktop"
+chmod 0755 "${TARGET_ROOTFS}/usr/share/applications/calamares.desktop"
 
 if [[ "${DRY_RUN}" != "1" ]]; then
     cp -a "${TARGET_ROOTFS}/etc/skel/." "${TARGET_ROOTFS}/home/kian/"
-    chmod +x "${TARGET_ROOTFS}/home/kian/Desktop/"*.desktop
+    chmod 0755 "${TARGET_ROOTFS}/home/kian/Desktop/"*.desktop
     chown -R 1000:1000 "${TARGET_ROOTFS}/home/kian"
 fi
 
@@ -414,13 +515,13 @@ if [[ -f "${SCRIPTS_DIR}/41_kian_snapshots" ]]; then
     run_cmd chmod +x "${TARGET_ROOTFS}/etc/grub.d/41_kian_snapshots"
 fi
 
-# Authoritative /etc/default/grub with Kian-OS v3 kernel command line & panic=10 watchdog trigger
+# Authoritative /etc/default/grub with Kian-OS v3 kernel command line, NVIDIA GSP KMS & panic=10 watchdog trigger
 cat << 'EOF' > "${TARGET_ROOTFS}/etc/default/grub"
 GRUB_DEFAULT="kian_primary"
 GRUB_TIMEOUT_STYLE=menu
 GRUB_TIMEOUT=3
 GRUB_DISTRIBUTOR="Kian-OS v3"
-GRUB_CMDLINE_LINUX_DEFAULT="quiet splash preempt=full split_lock_mitigate=0 panic=10"
+GRUB_CMDLINE_LINUX_DEFAULT="quiet splash preempt=full split_lock_mitigate=0 nouveau.config=NvGspRm=1 panic=10"
 GRUB_CMDLINE_LINUX=""
 EOF
 

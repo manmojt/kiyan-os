@@ -177,10 +177,14 @@ jobs:
           serial_sock_path = "/tmp/qemu-live/serial.sock"
           qmp_sock = "/tmp/qemu-live/qmp.sock"
           ppm_path = "/tmp/qemu-live/live_desktop.ppm"
+          calamares_ppm_path = "/tmp/qemu-live/calamares_desktop.ppm"
+          target_disk = "/tmp/qemu-live/target_disk.qcow2"
 
-          for p in (serial_log, serial_sock_path, qmp_sock, ppm_path):
+          for p in (serial_log, serial_sock_path, qmp_sock, ppm_path, calamares_ppm_path, target_disk):
               if os.path.exists(p):
                   os.remove(p)
+
+          subprocess.run(["qemu-img", "create", "-f", "qcow2", target_disk, "20G"], check=True)
 
           cmd = [
               "qemu-system-x86_64",
@@ -189,6 +193,7 @@ jobs:
               "-smp", str(os.cpu_count() or 2),
               *uefi_args,
               "-cdrom", iso_file,
+              "-drive", f"file={target_disk},if=virtio,format=qcow2",
               "-boot", "d",
               "-vga", "virtio",
               "-display", "none",
@@ -230,29 +235,48 @@ jobs:
               payload = json.dumps({"execute": "screendump", "arguments": {"filename": out_ppm}}) + "\n"
               s.sendall(payload.encode("utf-8"))
               resp = f.readline()
-              print("QMP screendump response:", resp.strip(), flush=True)
+              print(f"QMP screendump ({out_ppm}) response:", resp.strip(), flush=True)
               s.close()
 
-          probe_cmd = (
+          probe1_cmd = (
               "echo KIAN_PROBE_BEGIN_$((10+1)); "
               "uname -a; "
               "sudo dmesg | grep -iE 'Linux version|BORE' | head -n 12; "
               "ls -l /dev/ntsync; "
+              "sudo /usr/share/calamares/hooks/pre-install-probe.sh >/tmp/preprobe.log 2>&1 && "
+              "test -s /cdrom/casper/filesystem.squashfs && echo SQUASHFS_SOURCE_OK_$((50+5)); "
               "for i in $(seq 1 45); do "
               "if pgrep -u kian -f '[p]lasmashell' >/dev/null 2>&1 && pgrep -u kian -f '[k]win_wayland' >/dev/null 2>&1; then "
               "echo PLASMA_WAYLAND_READY_$((40+2)); "
               "ps -u kian -o pid,comm | grep -E 'kwin_wayland|plasmashell'; "
               "break; "
               "fi; sleep 1; done; "
-              "sleep 12; "
-              "echo KIAN_PROBE_COMPLETE_$((100+23))\n"
+              "sleep 10; "
+              "echo KIAN_PROBE1_DONE_$((100+23))\n"
+          )
+
+          probe2_cmd = (
+              "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus "
+              "XDG_RUNTIME_DIR=/run/user/1000 "
+              "WAYLAND_DISPLAY=wayland-0 "
+              "kioclient5 exec /home/kian/Desktop/calamares.desktop >/tmp/kio_calamares.log 2>&1 & "
+              "for i in $(seq 1 30); do "
+              "if pgrep -u root -x calamares >/dev/null 2>&1; then "
+              "sleep 10; "
+              "if pgrep -u root -x calamares >/dev/null 2>&1; then "
+              "echo CALAMARES_GUI_ALIVE_$((70+7)); "
+              "fi; "
+              "break; "
+              "fi; sleep 1; done; "
+              "tail -n 25 /tmp/kio_calamares.log 2>/dev/null; "
+              "echo KIAN_PROBE2_DONE_$((200+34))\n"
           )
 
           state = "WAIT_LOGIN"
           state_pos = 0
           state_ts = time.time()
           buf = ""
-          deadline = time.time() + 240
+          deadline = time.time() + 270
 
           with open(serial_log, "wb") as log_fh:
               while time.time() < deadline:
@@ -286,31 +310,41 @@ jobs:
                       elif ("kian@kian-os" in tail or "$ " in tail):
                           state_pos = len(buf)
                           state_ts = time.time()
-                          send_serial(ser, probe_cmd)
-                          state = "WAIT_PROBE"
+                          send_serial(ser, probe1_cmd)
+                          state = "WAIT_PROBE1"
                       elif time.time() - state_ts > 15:
                           state_pos = len(buf)
                           state_ts = time.time()
                           send_serial(ser, "\nkian\n")
                   elif state == "WAIT_SHELL":
                       if ("kian@kian-os" in tail or "$ " in tail):
-                          print("Live shell active! Running kernel/BORE/NTSync/Wayland live verification probe...", flush=True)
+                          print("Live shell active! Running Probe 1 (kernel/BORE/NTSync/SquashFS/Wayland)...", flush=True)
                           time.sleep(0.3)
                           state_pos = len(buf)
                           state_ts = time.time()
-                          send_serial(ser, probe_cmd)
-                          state = "WAIT_PROBE"
+                          send_serial(ser, probe1_cmd)
+                          state = "WAIT_PROBE1"
                       elif "Login incorrect" in tail:
                           raise RuntimeError("Live serial login rejected password for 'kian'!")
-                  elif state == "WAIT_PROBE":
-                      if "KIAN_PROBE_COMPLETE_123" in tail:
-                          print("Live verification probe completed! Capturing QMP desktop framebuffer...", flush=True)
+                  elif state == "WAIT_PROBE1":
+                      if "KIAN_PROBE1_DONE_123" in tail:
+                          print("Probe 1 completed! Capturing clean desktop screenshot & double-clicking Install Kian-OS v3...", flush=True)
+                          qmp_screendump(ppm_path)
+                          state_pos = len(buf)
+                          state_ts = time.time()
+                          send_serial(ser, probe2_cmd)
+                          state = "WAIT_PROBE2"
+                  elif state == "WAIT_PROBE2":
+                      if "KIAN_PROBE2_DONE_234" in tail:
+                          print("Probe 2 completed! Capturing live Calamares GUI screenshot...", flush=True)
+                          qmp_screendump(calamares_ppm_path)
                           break
 
-          if state != "WAIT_PROBE" or "KIAN_PROBE_COMPLETE_123" not in buf[state_pos:]:
-              print(f"WARNING: Probe finished in state={state} before KIAN_PROBE_COMPLETE_123; capturing state anyway...", flush=True)
+          if not os.path.exists(ppm_path):
+              qmp_screendump(ppm_path)
+          if not os.path.exists(calamares_ppm_path):
+              qmp_screendump(calamares_ppm_path)
 
-          qmp_screendump(ppm_path)
           ser.close()
           proc.terminate()
           try:
@@ -320,24 +354,28 @@ jobs:
           PY
 
           convert /tmp/qemu-live/live_desktop.ppm /tmp/qemu-live/boot_screenshot.png
+          convert /tmp/qemu-live/calamares_desktop.ppm /tmp/qemu-live/calamares_screenshot.png
           cp -f /tmp/qemu-live/boot_screenshot.png output/boot_screenshot.png
+          cp -f /tmp/qemu-live/calamares_screenshot.png output/calamares_screenshot.png
           cp -f /tmp/qemu-live/live_serial.log output/live_serial.log
 
-          echo "=== LIVE ISO SERIAL BOOT & RUNTIME PROBE VERIFICATION ==="
-          tail -n 60 /tmp/qemu-live/live_serial.log | tr -d '\033\r'
+          echo "=== LIVE ISO SERIAL BOOT & CALAMARES DOUBLE-CLICK PROBE VERIFICATION ==="
+          tail -n 80 /tmp/qemu-live/live_serial.log | tr -d '\033\r'
 
           # HARD GATES (ZERO || true!)
           grep -q "Linux version 6.8.12-kian-v3" /tmp/qemu-live/live_serial.log
           grep -qi "BORE" /tmp/qemu-live/live_serial.log
           grep -q "/dev/ntsync" /tmp/qemu-live/live_serial.log
+          grep -q "SQUASHFS_SOURCE_OK_55" /tmp/qemu-live/live_serial.log
           grep -q "PLASMA_WAYLAND_READY_42" /tmp/qemu-live/live_serial.log
-          grep -q "KIAN_PROBE_COMPLETE_123" /tmp/qemu-live/live_serial.log
+          grep -q "CALAMARES_GUI_ALIVE_77" /tmp/qemu-live/live_serial.log
           if grep -qi "Kernel panic" /tmp/qemu-live/live_serial.log; then
             echo "FATAL: Kernel panic detected during Live ISO boot!" >&2
             exit 1
           fi
           test -s output/boot_screenshot.png
-          echo "[PASS] Production ISO booted cleanly through UEFI -> linux-kian 6.8.12-kian-v3 (BORE + NTSync) -> Casper -> Live KDE Plasma Wayland!"
+          test -s output/calamares_screenshot.png
+          echo "[PASS] Production ISO booted cleanly & Desktop Double-Click launched Calamares GUI on Wayland!"
 
       - name: Upload Live Boot Screenshot & Serial Logs Artifact
         if: always()
@@ -346,6 +384,7 @@ jobs:
           name: kian-os-v3-live-boot-evidence
           path: |
             output/boot_screenshot.png
+            output/calamares_screenshot.png
             output/live_serial.log
           if-no-files-found: ignore
 
@@ -356,14 +395,15 @@ jobs:
         run: |
           set -euo pipefail
           cd output
-          sha256sum kian-os-v3-noble-amd64.iso boot_screenshot.png live_serial.log > SHA256SUMS
+          sha256sum kian-os-v3-noble-amd64.iso boot_screenshot.png calamares_screenshot.png live_serial.log > SHA256SUMS
           TAG="kian-v3-run-${GITHUB_RUN_NUMBER}"
           gh release create "$TAG" \
             --title "Kian-OS v3 Verified Hybrid OS (x86_64, linux-kian 6.8.12-kian-v3 MOK Signed) Build #${GITHUB_RUN_NUMBER}" \
-            --notes "End-to-end cryptographically signed and KVM/UEFI live-boot verified Kian-OS v3 (Ubuntu 24.04 LTS Noble, linux-kian 6.8.12-kian-v3 with BORE 1000Hz + NTSync + BBRv3, Pure KDE Wayland, Triple-Shell, Calamares 3.3 Btrfs Zstd-3 installer, Dual-Kernel Watchdog)." \
+            --notes "End-to-end cryptographically signed and KVM/UEFI live-boot + Calamares double-click verified Kian-OS v3 (Ubuntu 24.04 LTS Noble, linux-kian 6.8.12-kian-v3 with BORE 1000Hz + NTSync + BBRv3, Full AMD/Intel/NVIDIA KMS Firmware + kscreen Native Display, Pure KDE Wayland, Calamares 3.3 Btrfs Zstd-3 installer, Dual-Kernel Watchdog)." \
             --latest \
             kian-os-v3-noble-amd64.iso \
             kian-os-v3-noble-amd64.iso.sha256 \
             SHA256SUMS \
             boot_screenshot.png \
+            calamares_screenshot.png \
             live_serial.log

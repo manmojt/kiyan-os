@@ -168,10 +168,13 @@ echo "  [PASS] Live autologin, 99-kian-live NOPASSWD sudo, and live user sanitiz
 # ==============================================================================
 echo "[Phase 3/5] Sanitizing live installer desktop launchers & skel templates..."
 
-# Remove installer launchers from /etc/skel (skeleton for all future users)
+# Remove installer launchers & live wrapper from /etc/skel and target system
 rm -f "$TARGET_ROOT/etc/skel/Desktop/calamares.desktop"
 rm -f "$TARGET_ROOT/etc/skel/Desktop/install-kian.desktop"
 rm -f "$TARGET_ROOT/etc/skel/.config/autostart/calamares.desktop"
+rm -f "$TARGET_ROOT/usr/bin/kian-install-os"
+rm -f "$TARGET_ROOT/usr/share/applications/calamares.desktop"
+rm -f "$TARGET_ROOT/usr/share/polkit-1/actions/org.kian.install.policy"
 
 # Clean any existing user directories created during install
 if [[ -d "$TARGET_ROOT/home" ]]; then

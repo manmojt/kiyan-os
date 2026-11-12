@@ -247,20 +247,54 @@ if [[ "${DRY_RUN}" == "1" ]]; then
     log_info "[DRY-RUN] Would configure /etc/casper.conf for user 'kian' and FLAVOUR='kian'."
 else
     chroot "${TARGET_ROOTFS}" /usr/bin/env DEBIAN_FRONTEND=noninteractive bash -euo pipefail << 'CHROOT_EOF'
+# Exclude non-PC ARM phone SoCs & datacenter rack-switch ASIC blobs so 100% of
+# Intel/AMD/NVIDIA GPU, Wi-Fi, Bluetooth, and Audio firmware fits cleanly on ISO
+mkdir -p /etc/dpkg/dpkg.cfg.d
+cat << 'DPKG_EOF' > /etc/dpkg/dpkg.cfg.d/99-kian-firmware-filter
+path-exclude=/lib/firmware/netronome/*
+path-exclude=/usr/lib/firmware/netronome/*
+path-exclude=/lib/firmware/mellanox/*
+path-exclude=/usr/lib/firmware/mellanox/*
+path-exclude=/lib/firmware/liquidio/*
+path-exclude=/usr/lib/firmware/liquidio/*
+path-exclude=/lib/firmware/qcom/*
+path-exclude=/usr/lib/firmware/qcom/*
+path-exclude=/lib/firmware/mrvl/prestera/*
+path-exclude=/usr/lib/firmware/mrvl/prestera/*
+path-exclude=/lib/firmware/dpaa2/*
+path-exclude=/usr/lib/firmware/dpaa2/*
+path-exclude=/lib/firmware/qed/*
+path-exclude=/usr/lib/firmware/qed/*
+path-exclude=/lib/firmware/cxgb4/*
+path-exclude=/usr/lib/firmware/cxgb4/*
+path-exclude=/lib/firmware/bnx2x/*
+path-exclude=/usr/lib/firmware/bnx2x/*
+path-exclude=/lib/firmware/cnm/*
+path-exclude=/usr/lib/firmware/cnm/*
+DPKG_EOF
+
 apt-get -o Acquire::Retries=3 update
 
-# Core Base System, Bootloaders, Audio/Graphics, Firmware & Utilities
+# Core Base System, Bootloaders (UEFI + BIOS), GPU/Wi-Fi Firmware, Mesa DRI & Dual Kernels
 apt-get -o Acquire::Retries=3 install -y --no-install-recommends \
     ca-certificates apt-transport-https \
     systemd systemd-sysv udev dbus dbus-user-session sudo locales tzdata \
     network-manager wpasupplicant btrfs-progs snapper cryptsetup cryptsetup-initramfs \
     casper user-setup \
-    grub-efi-amd64-bin grub-efi-amd64-signed shim-signed mokutil sbsigntool \
+    grub-pc-bin grub-efi-amd64-bin grub-efi-amd64-signed shim-signed mokutil sbsigntool \
+    linux-firmware intel-microcode amd64-microcode \
     pipewire pipewire-pulse pipewire-alsa wireplumber \
-    mesa-vulkan-drivers mesa-va-drivers vulkan-tools \
+    libgl1-mesa-dri libegl-mesa0 libgbm1 mesa-vulkan-drivers mesa-va-drivers vulkan-tools \
     ubuntu-drivers-common pciutils usbutils dmidecode \
     curl wget nano iproute2 kmod zstd xz-utils \
     linux-image-generic linux-headers-generic
+
+# Verify mandatory hardware GPU KMS firmware & BIOS/UEFI GRUB modules exist right now
+test -d /usr/lib/firmware/amdgpu
+test -d /usr/lib/firmware/i915
+test -d /usr/lib/firmware/nvidia
+test -f /usr/lib/grub/i386-pc/modinfo.sh
+test -f /usr/lib/grub/x86_64-efi/modinfo.sh
 
 # Authoritative Casper Live Configuration (prevents 'ubuntu' UID 1000 collision & .disk/info override)
 cat << 'EOF' > /etc/casper.conf

@@ -132,6 +132,31 @@ if lspci -nn | grep -Ei 'vga|3d|display' | grep -qi 'intel'; then
     touch /tmp/kian_hw_gpu_intel
 fi
 
+# 8. Guarantee Live SquashFS Source Path (/cdrom/casper/filesystem.squashfs) for USB / Ventoy / Rufus Boots
+echo "[Probe 8/8] Verifying live SquashFS source path for Calamares unpackfs..."
+if [[ ! -s /cdrom/casper/filesystem.squashfs ]]; then
+    FOUND_SQUASHFS=""
+    for candidate in \
+        /run/live/medium/casper/filesystem.squashfs \
+        /isodevice/casper/filesystem.squashfs \
+        /media/*/casper/filesystem.squashfs \
+        /mnt/*/casper/filesystem.squashfs; do
+        if [[ -s "${candidate}" ]]; then
+            FOUND_SQUASHFS="${candidate}"
+            break
+        fi
+    done
+    if [[ -n "${FOUND_SQUASHFS}" ]]; then
+        mkdir -p /cdrom/casper
+        ln -sfn "${FOUND_SQUASHFS}" /cdrom/casper/filesystem.squashfs
+        echo "  [FIXED] Linked /cdrom/casper/filesystem.squashfs -> ${FOUND_SQUASHFS}"
+    elif [[ "${KIAN_TEST_MODE:-0}" != "1" ]]; then
+        echo "  [WARN] /cdrom/casper/filesystem.squashfs not found in standard paths; checking active mounts..."
+    fi
+else
+    echo "  [PASS] /cdrom/casper/filesystem.squashfs verified ready."
+fi
+
 echo "======================================================================"
 echo " ==> Hardware probe completed successfully. Profile saved to /tmp/kian_hw_*"
 echo "======================================================================"

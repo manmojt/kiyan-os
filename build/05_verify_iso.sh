@@ -122,11 +122,24 @@ if command -v unmkinitramfs &>/dev/null; then
     log_success "[PASS 4/6] Initramfs verified: USERNAME=kian, FLAVOUR=kian, 99kian_autologin & kian_overlayfs embedded."
 fi
 
-# 5. Deep SquashFS Forensic Audit (selective extraction to conserve disk space)
+# 5. Deep SquashFS Forensic Audit (selective extraction + archive listing to conserve disk space)
+SQ_LIST="${WORK_DIR}/squashfs_files.txt"
+unsquashfs -lc "${WORK_DIR}/filesystem.squashfs" > "${SQ_LIST}"
+grep -q "usr/lib/firmware/amdgpu/" "${SQ_LIST}"
+grep -q "usr/lib/firmware/i915/" "${SQ_LIST}"
+grep -q "usr/lib/firmware/nvidia/" "${SQ_LIST}"
+grep -q "usr/lib/grub/i386-pc/modinfo.sh" "${SQ_LIST}"
+grep -q "usr/lib/grub/x86_64-efi/modinfo.sh" "${SQ_LIST}"
+
 unsquashfs -f -d "${WORK_DIR}/sq" "${WORK_DIR}/filesystem.squashfs" \
     usr/bin/pkexec \
     usr/bin/calamares \
+    usr/bin/kian-install-os \
     usr/bin/kwin_wayland \
+    usr/bin/Xwayland \
+    usr/bin/xhost \
+    usr/bin/kioclient5 \
+    usr/bin/kscreen-doctor \
     usr/bin/startplasma-wayland \
     usr/bin/localsend_app \
     opt/localsend_app/localsend_app \
@@ -136,31 +149,38 @@ unsquashfs -f -d "${WORK_DIR}/sq" "${WORK_DIR}/filesystem.squashfs" \
     usr/share/wayland-sessions/plasmawayland.desktop \
     usr/share/applications/org.kde.falkon.desktop \
     usr/share/applications/localsend_app.desktop \
+    usr/share/applications/calamares.desktop \
+    usr/share/polkit-1/actions/org.kian.install.policy \
     usr/share/Kvantum/KianGlass/KianGlass.svg \
     usr/share/Kvantum/FluentDark/FluentDark.svg \
     usr/share/Kvantum/KianAquaGlass/KianAquaGlass.svg \
+    usr/share/calamares/hooks/pre-install-probe.sh \
     usr/share/calamares/hooks/post-install-drivers-and-clean.sh \
     etc/casper.conf \
     etc/resolv.conf \
+    etc/profile.d/kian-wayland.sh \
     etc/sddm.conf.d/wayland.conf \
     etc/calamares/settings.conf \
-    etc/calamares/modules/displaymanager.conf \
-    etc/calamares/modules/mount.conf \
-    etc/calamares/modules/partition.conf \
+    etc/calamares/modules \
     etc/grub.d/01_kian_watchdog \
     etc/grub.d/09_kian_kernels \
     etc/default/grub \
     etc/udev/rules.d/99-ntsync.rules \
     etc/modules-load.d/kian-ntsync.conf \
     etc/sysctl.d/99-kian-performance.conf \
+    home/kian/.config/kiorc \
     home/kian/Desktop/calamares.desktop \
-    usr/lib/modules/6.8.12-kian-v3/kernel/drivers/misc \
-    lib/modules/6.8.12-kian-v3/kernel/drivers/misc >/dev/null || true
+    usr/lib/modules/6.8.12-kian-v3/kernel/drivers/misc >/dev/null || true
 
 SQ="${WORK_DIR}/sq"
 test -x "${SQ}/usr/bin/pkexec"
 test -x "${SQ}/usr/bin/calamares"
+test -x "${SQ}/usr/bin/kian-install-os"
 test -x "${SQ}/usr/bin/kwin_wayland"
+test -x "${SQ}/usr/bin/Xwayland"
+test -x "${SQ}/usr/bin/xhost"
+test -x "${SQ}/usr/bin/kioclient5"
+test -x "${SQ}/usr/bin/kscreen-doctor"
 test -x "${SQ}/usr/bin/startplasma-wayland"
 test -L "${SQ}/usr/bin/localsend_app"
 test -x "${SQ}/opt/localsend_app/localsend_app"
@@ -170,9 +190,26 @@ test -x "${SQ}/usr/lib/x86_64-linux-gnu/libexec/kdeconnectd"
 test -f "${SQ}/usr/share/Kvantum/KianGlass/KianGlass.svg"
 test -f "${SQ}/usr/share/Kvantum/FluentDark/FluentDark.svg"
 test -f "${SQ}/usr/share/Kvantum/KianAquaGlass/KianAquaGlass.svg"
+test -x "${SQ}/home/kian/Desktop/calamares.desktop"
+grep -q "^Exec=/usr/bin/kian-install-os$" "${SQ}/home/kian/Desktop/calamares.desktop"
+grep -q "behaviourOnLaunch=execute" "${SQ}/home/kian/.config/kiorc"
+if grep -q "QT_AUTO_SCREEN_SCALE_FACTOR" "${SQ}/etc/profile.d/kian-wayland.sh"; then
+    log_error "FATAL: Blurry QT_AUTO_SCREEN_SCALE_FACTOR=1 still present in /etc/profile.d/kian-wayland.sh!"
+    exit 1
+fi
 test -f "${SQ}/etc/calamares/modules/displaymanager.conf"
+test -f "${SQ}/etc/calamares/modules/fstab.conf"
+test -f "${SQ}/etc/calamares/modules/users.conf"
+test -f "${SQ}/etc/calamares/modules/grubcfg.conf"
+test -f "${SQ}/etc/calamares/modules/bootloader.conf"
+test -f "${SQ}/etc/calamares/modules/packages.conf"
 grep -q "defaultDesktopEnvironment:" "${SQ}/etc/calamares/modules/displaymanager.conf"
 grep -q "compress=zstd:3" "${SQ}/etc/calamares/modules/mount.conf"
+if grep -q "/run/systemd/resolve" "${SQ}/etc/calamares/modules/mount.conf"; then
+    log_error "FATAL: Broken /run/systemd/resolve bind mount still present in Calamares mount.conf!"
+    exit 1
+fi
+grep -q "update_db: false" "${SQ}/etc/calamares/modules/packages.conf"
 grep -q "99-kian-live" "${SQ}/usr/share/calamares/hooks/post-install-drivers-and-clean.sh"
 grep -q 'User=kian' "${SQ}/etc/sddm.conf.d/wayland.conf"
 grep -q 'Session=plasmawayland.desktop' "${SQ}/etc/sddm.conf.d/wayland.conf"
@@ -183,11 +220,11 @@ if grep -qi "internal.cloudapp.net" "${SQ}/etc/resolv.conf"; then
     log_error "FATAL: Cloud build runner DNS domain leaked into SquashFS /etc/resolv.conf!"
     exit 1
 fi
-NTSYNC_KO=$(find "${SQ}/usr/lib/modules/6.8.12-kian-v3" "${SQ}/lib/modules/6.8.12-kian-v3" -name "ntsync.ko*" 2>/dev/null | head -n 1 || true)
+NTSYNC_KO=$(find "${SQ}/usr/lib/modules/6.8.12-kian-v3" -name "ntsync.ko*" 2>/dev/null | head -n 1 || true)
 test -f "${NTSYNC_KO}"
 if command -v modinfo &>/dev/null; then
     modinfo "${NTSYNC_KO}" | grep -q "signer:.*KIAN-OS"
 fi
-log_success "[PASS 5/6] Deep SquashFS audit passed (pkexec, Calamares schema, SDDM autologin, Watchdog IDs, Kvantum SVGs, LocalSend, KDE Connect, NTSync MOK)."
+log_success "[PASS 5/6] Deep SquashFS audit passed (GPU firmware, kscreen, Xwayland, kian-install-os, Calamares configs, SDDM autologin, Watchdog IDs, NTSync MOK)."
 
 log_success "[PASS 6/6] ALL 6 FORENSIC & CRYPTOGRAPHIC ISO GATES PASSED (100% VERIFIED)!"
