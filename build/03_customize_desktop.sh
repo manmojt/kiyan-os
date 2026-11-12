@@ -140,7 +140,9 @@ apt-get install -y --no-install-recommends \
     gnome-disk-utility baobab eog evince file-roller gnome-screenshot \
     gnome-power-manager power-profiles-daemon upower brightnessctl colord \
     packagekit flatpak gnome-software gnome-software-plugin-flatpak \
-    xwayland x11-xserver-utils desktop-file-utils xdg-user-dirs xdg-user-dirs-gtk \
+    xwayland xserver-xorg xserver-xorg-legacy x11-xkb-utils x11-xserver-utils \
+    at-spi2-core ibus gnome-menus switcheroo-control iio-sensor-proxy bolt \
+    desktop-file-utils xdg-user-dirs xdg-user-dirs-gtk \
     xdg-desktop-portal xdg-desktop-portal-gnome xdg-desktop-portal-gtk \
     pkexec polkitd policykit-desktop-privileges zenity unzip zip p7zip-full \
     bluez gnome-bluetooth-sendto network-manager-gnome pulseaudio-utils alsa-utils \
