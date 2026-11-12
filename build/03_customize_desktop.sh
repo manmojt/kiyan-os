@@ -115,6 +115,7 @@ apt-get update
 
 # 3. Install Complete Zorin OS 18 GNOME 46 Desktop, Settings, Power/Battery, Color, Store & Extensions
 apt-get install -y --no-install-recommends \
+    zorin-os-desktop \
     gdm3 gnome-shell gnome-session gnome-control-center gnome-settings-daemon \
     gnome-tweaks gnome-shell-extension-manager dconf-cli libglib2.0-bin \
     zorin-desktop-session zorin-os-default-settings \
@@ -135,13 +136,15 @@ apt-get install -y --no-install-recommends \
     gnome-shell-extension-zorin-printers \
     zorin-connect zorin-exec-guard zorin-exec-guard-app-db \
     zorin-windows-app-support-desktop-files \
+    adwaita-icon-theme gnome-keyring libpam-gnome-keyring gvfs gvfs-backends gvfs-fuse \
+    xdg-utils gir1.2-gmenu-3.0 appstream appstream-data-zorin-os \
     fonts-zorin-os-core fonts-inter fonts-vazirmatn fonts-firacode fonts-jetbrains-mono fonts-noto-color-emoji \
     nautilus gnome-terminal gnome-text-editor gnome-calculator gnome-system-monitor \
     gnome-disk-utility baobab eog evince file-roller gnome-screenshot \
     gnome-power-manager power-profiles-daemon upower brightnessctl colord \
     packagekit flatpak gnome-software gnome-software-plugin-flatpak \
-    xwayland xserver-xorg xserver-xorg-legacy x11-xkb-utils x11-xserver-utils \
-    at-spi2-core ibus gnome-menus switcheroo-control iio-sensor-proxy bolt \
+    xwayland xorg xserver-xorg xserver-xorg-legacy x11-xkb-utils x11-xserver-utils \
+    at-spi2-core ibus ibus-gtk ibus-gtk3 gnome-menus switcheroo-control iio-sensor-proxy bolt \
     desktop-file-utils xdg-user-dirs xdg-user-dirs-gtk \
     xdg-desktop-portal xdg-desktop-portal-gnome xdg-desktop-portal-gtk \
     pkexec polkitd policykit-desktop-privileges zenity unzip zip p7zip-full \

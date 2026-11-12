@@ -191,7 +191,10 @@ mkdir -p "${TARGET_ROOTFS}/etc/initramfs-tools" \
 
 # Early-boot keyboard/SPI/HID drivers so LUKS2 passphrases work on MacBooks, Surface, and USB keyboards
 cat << 'EOF' > "${TARGET_ROOTFS}/etc/initramfs-tools/modules"
-# KIAN-OS v3 Early-Boot Input & Storage Modules (LUKS2 Passphrase Entry)
+# Kiyan OS v4 Early-Boot Input, KMS Display & Storage Modules (LUKS2 + Plymouth + GNOME Wayland)
+virtio_gpu
+bochs
+qxl
 usbhid
 hid_generic
 hid_apple
