@@ -14,7 +14,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/common.sh"
 
 TARGET_ROOTFS="${ROOTFS_DIR}"
-MIRROR_URL="https://mirrors.edge.kernel.org/ubuntu/"
+MIRROR_URL="https://archive.ubuntu.com/ubuntu/"
 CLEAN_FIRST=0
 
 show_usage() {
