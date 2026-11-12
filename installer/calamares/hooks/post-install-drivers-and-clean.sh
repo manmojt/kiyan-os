@@ -128,7 +128,7 @@ if [[ -f "$TARGET_ROOT/etc/gdm3/custom.conf" ]]; then
     cat << 'GDM_EOF' > "$TARGET_ROOT/etc/gdm3/custom.conf"
 [daemon]
 WaylandEnable=true
-DefaultSession=zorin-wayland.desktop
+DefaultSession=zorin.desktop
 
 [security]
 

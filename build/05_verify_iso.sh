@@ -126,7 +126,7 @@ unsquashfs -f -d "${WORK_DIR}/sq" "${WORK_DIR}/filesystem.squashfs" \
     usr/bin/kiyan-boot-logo \
     usr/bin/kian-rollback \
     usr/lib/kian/btrfs-apt-hook \
-    usr/share/wayland-sessions/zorin-wayland.desktop \
+    usr/share/wayland-sessions/zorin.desktop \
     etc/gdm3/custom.conf \
     etc/NetworkManager/conf.d/90-kiyan-wifi-dns.conf \
     etc/calamares/branding/kian/branding.desc \
@@ -144,13 +144,13 @@ test -x "${SQ}/usr/bin/calamares"
 test -x "${SQ}/usr/bin/kian-install-os"
 test -x "${SQ}/usr/bin/kiyan-boot-logo"
 test -x "${SQ}/usr/bin/kian-rollback"
-test -f "${SQ}/usr/share/wayland-sessions/zorin-wayland.desktop"
+test -f "${SQ}/usr/share/wayland-sessions/zorin.desktop"
 grep -q "AutomaticLogin=kian" "${SQ}/etc/gdm3/custom.conf"
-grep -q "DefaultSession=zorin-wayland.desktop" "${SQ}/etc/gdm3/custom.conf"
+grep -q "DefaultSession=zorin.desktop" "${SQ}/etc/gdm3/custom.conf"
 grep -q "btrfs property set" "${SQ}/usr/lib/kian/btrfs-apt-hook"
 test -f "${SQ}/etc/calamares/branding/kian/branding.desc"
 test -f "${SQ}/etc/calamares/branding/kian/show.qml"
-grep -q "zorin-wayland" "${SQ}/etc/calamares/modules/displaymanager.conf"
+grep -q "zorin" "${SQ}/etc/calamares/modules/displaymanager.conf"
 grep -q "compress=zstd:3" "${SQ}/etc/calamares/modules/mount.conf"
 grep -q "kian_primary" "${SQ}/etc/grub.d/09_kian_kernels"
 grep -q "kian_fallback_generic" "${SQ}/etc/grub.d/09_kian_kernels"

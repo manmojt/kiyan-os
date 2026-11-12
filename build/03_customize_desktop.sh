@@ -534,7 +534,7 @@ cat << 'EOF' > "${TARGET_ROOTFS}/etc/gdm3/custom.conf"
 WaylandEnable=true
 AutomaticLoginEnable=true
 AutomaticLogin=kian
-DefaultSession=zorin-wayland.desktop
+DefaultSession=zorin.desktop
 
 [security]
 
@@ -560,7 +560,7 @@ cat > /root/etc/gdm3/custom.conf << 'GDM_EOF'
 WaylandEnable=true
 AutomaticLoginEnable=true
 AutomaticLogin=kian
-DefaultSession=zorin-wayland.desktop
+DefaultSession=zorin.desktop
 
 [security]
 
@@ -574,7 +574,7 @@ GDM_EOF
 mkdir -p /root/var/lib/AccountsService/users
 cat > /root/var/lib/AccountsService/users/kian << 'ACC_EOF'
 [User]
-Session=zorin-wayland
+Session=zorin
 SystemAccount=false
 ACC_EOF
 
@@ -630,6 +630,7 @@ if [[ ${EUID:-$(id -u)} -eq 0 ]]; then
     mkdir -p -m 0700 /tmp/calamares-runtime-root
     chown 0:0 /tmp/calamares-runtime-root
     export XDG_RUNTIME_DIR="/tmp/calamares-runtime-root"
+
     if [[ -z "${WAYLAND_DISPLAY:-}" ]]; then
         for wsock in /run/user/*/wayland-*; do
             if [[ -S "${wsock}" && "${wsock}" != *.lock ]]; then
@@ -638,6 +639,7 @@ if [[ ${EUID:-$(id -u)} -eq 0 ]]; then
             fi
         done
     fi
+
     if [[ -z "${DISPLAY:-}" ]]; then
         for xsock in /tmp/.X11-unix/X*; do
             if [[ -S "${xsock}" ]]; then
@@ -646,17 +648,45 @@ if [[ ${EUID:-$(id -u)} -eq 0 ]]; then
             fi
         done
     fi
-    export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-wayland;xcb}"
+
+    if [[ -z "${XAUTHORITY:-}" || ! -f "${XAUTHORITY:-}" ]]; then
+        for xauth in /run/user/*/gdm/Xauthority /run/user/*/.mutter-Xwaylandauth.* /home/*/.Xauthority; do
+            if [[ -f "${xauth}" ]]; then
+                export XAUTHORITY="${xauth}"
+                break
+            fi
+        done
+    fi
+
+    if [[ -n "${WAYLAND_DISPLAY:-}" && -S "${WAYLAND_DISPLAY}" ]]; then
+        export QT_QPA_PLATFORM="wayland;xcb"
+    else
+        unset WAYLAND_DISPLAY
+        export QT_QPA_PLATFORM="xcb"
+    fi
     exec /usr/bin/calamares -D6 "$@" >>/tmp/calamares-launch.log 2>&1
 fi
 
 USER_UID="$(id -u)"
 USER_RUNTIME="${XDG_RUNTIME_DIR:-/run/user/${USER_UID}}"
-WL_SOCK="${WAYLAND_DISPLAY:-wayland-0}"
-if [[ "${WL_SOCK}" != /* ]]; then
-    WL_ABS="${USER_RUNTIME}/${WL_SOCK}"
-else
-    WL_ABS="${WL_SOCK}"
+WL_ABS=""
+if [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
+    if [[ "${WAYLAND_DISPLAY}" == /* ]]; then
+        WL_ABS="${WAYLAND_DISPLAY}"
+    else
+        WL_ABS="${USER_RUNTIME}/${WAYLAND_DISPLAY}"
+    fi
+    if [[ ! -S "${WL_ABS}" ]]; then
+        WL_ABS=""
+    fi
+fi
+if [[ -z "${WL_ABS}" ]]; then
+    for wsock in "${USER_RUNTIME}"/wayland-*; do
+        if [[ -S "${wsock}" && "${wsock}" != *.lock ]]; then
+            WL_ABS="${wsock}"
+            break
+        fi
+    done
 fi
 
 X_DISP="${DISPLAY:-}"
@@ -669,14 +699,25 @@ if [[ -z "${X_DISP}" ]]; then
     done
 fi
 
+X_AUTH="${XAUTHORITY:-}"
+if [[ -z "${X_AUTH}" || ! -f "${X_AUTH}" ]]; then
+    for xa in "${USER_RUNTIME}/gdm/Xauthority" "${USER_RUNTIME}"/.mutter-Xwaylandauth.* "$HOME/.Xauthority"; do
+        if [[ -f "${xa}" ]]; then
+            X_AUTH="${xa}"
+            break
+        fi
+    done
+fi
+
 if command -v xhost >/dev/null 2>&1 && [[ -n "${X_DISP}" ]]; then
-    DISPLAY="${X_DISP}" xhost +SI:localuser:root >/dev/null 2>&1 || true
+    DISPLAY="${X_DISP}" XAUTHORITY="${X_AUTH}" xhost +SI:localuser:root >/dev/null 2>&1 || true
 fi
 
 if sudo -n true 2>/dev/null; then
     exec sudo env \
         WAYLAND_DISPLAY="${WL_ABS}" \
         DISPLAY="${X_DISP:-:0}" \
+        XAUTHORITY="${X_AUTH}" \
         QT_QPA_PLATFORM="wayland;xcb" \
         XDG_CURRENT_DESKTOP="GNOME" \
         LANG="${LANG:-en_US.UTF-8}" \
@@ -685,6 +726,7 @@ else
     exec pkexec env \
         WAYLAND_DISPLAY="${WL_ABS}" \
         DISPLAY="${X_DISP:-:0}" \
+        XAUTHORITY="${X_AUTH}" \
         QT_QPA_PLATFORM="wayland;xcb" \
         XDG_CURRENT_DESKTOP="GNOME" \
         LANG="${LANG:-en_US.UTF-8}" \
