@@ -155,7 +155,9 @@ deb https://security.ubuntu.com/ubuntu/ ${DISTRO_CODENAME}-security main restric
 deb ${MIRROR_URL} ${DISTRO_CODENAME}-backports main restricted universe multiverse
 EOF
 
-# Stage Kian MOK Certificate for Secure Boot Trust Chain
+# Copy host runner /etc/hosts DoH mappings temporarily so chroot APT resolves mirrors instantly on IPv4
+cp -f "${TARGET_ROOTFS}/etc/hosts" "${TARGET_ROOTFS}/etc/hosts.kiyan_clean"
+cat /etc/hosts >> "${TARGET_ROOTFS}/etc/hosts" 2>/dev/null || true
 mkdir -p "${TARGET_ROOTFS}/etc/ssl/certs" "${TARGET_ROOTFS}/usr/share/kian/keys"
 if [[ -f "${KEYS_DIR}/kian_mok.der" ]]; then
     cp "${KEYS_DIR}/kian_mok.der" "${TARGET_ROOTFS}/etc/ssl/certs/kian_mok.der"
@@ -273,7 +275,14 @@ path-exclude=/lib/firmware/cnm/*
 path-exclude=/usr/lib/firmware/cnm/*
 DPKG_EOF
 
-apt-get -o Acquire::Retries=3 update
+# Force IPv4 & automatic retries during chroot APT downloads (prevents runner IPv6/mirror hiccups)
+mkdir -p /etc/apt/apt.conf.d
+cat << 'APT_EOF' > /etc/apt/apt.conf.d/99-kiyan-resilient-net
+Acquire::ForceIPv4 "true";
+Acquire::Retries "5";
+APT_EOF
+
+apt-get update
 
 # Core Base System, Bootloaders (UEFI + BIOS), GPU/Wi-Fi Firmware + RegDB, Mesa DRI & Dual Kernels
 apt-get -o Acquire::Retries=3 install -y --no-install-recommends \

@@ -95,8 +95,8 @@ if [[ "${DRY_RUN}" == "1" ]]; then
     log_info "[DRY-RUN] Packages: plasma-workspace-wayland kwin-wayland sddm pkexec kdeconnect calamares"
 else
     chroot "${TARGET_ROOTFS}" /usr/bin/env DEBIAN_FRONTEND=noninteractive bash -euo pipefail << 'CHROOT_EOF'
-apt-get -o Acquire::Retries=3 update
-apt-get -o Acquire::Retries=3 install -y --no-install-recommends \
+apt-get update
+apt-get install -y --no-install-recommends \
     plasma-workspace \
     plasma-workspace-wayland \
     kwin-wayland \
@@ -164,6 +164,11 @@ if [[ -f /usr/share/xsessions/plasma.desktop ]]; then
     mv /usr/share/xsessions/plasma.desktop /usr/share/xsessions/plasma.desktop.disabled
 fi
 
+# Clean temporary build-only ForceIPv4 rule & restore clean /etc/hosts
+rm -f /etc/apt/apt.conf.d/99-kiyan-resilient-net
+if [[ -f /etc/hosts.kiyan_clean ]]; then
+    mv -f /etc/hosts.kiyan_clean /etc/hosts
+fi
 apt-get clean
 rm -rf /var/lib/apt/lists/*
 CHROOT_EOF
