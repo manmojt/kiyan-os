@@ -145,8 +145,9 @@ apt-get install -y --no-install-recommends \
     pkexec polkitd policykit-desktop-privileges zenity unzip zip p7zip-full \
     bluez gnome-bluetooth-sendto network-manager-gnome pulseaudio-utils alsa-utils \
     firefox vlc \
-    plymouth plymouth-label plymouth-theme-spinner \
+    plymouth plymouth-label plymouth-theme-spinner kbd \
     calamares calamares-settings-ubuntu-common \
+    qtwayland5 qml-module-qtquick2 qml-module-qtquick-window2 qml-module-qtquick-controls2 qml-module-qtquick-layouts \
     rsync efibootmgr dosfstools btrfs-progs ntfs-3g exfatprogs
 
 # Never include Zorin telemetry census!

@@ -212,6 +212,13 @@ jobs:
               "echo GNOME_WAYLAND_READY_$((40+2)); "
               "break; "
               "fi; sleep 1; done; "
+              "SESSION_ID=$(loginctl list-sessions --no-legend | awk '$3==\"kian\" {print $1; exit}'); "
+              "if [ -n \"$SESSION_ID\" ]; then sudo loginctl activate \"$SESSION_ID\" || true; fi; "
+              "for vt in 2 1 7; do "
+              "if [ -n \"$SESSION_ID\" ]; then "
+              "VTNR=$(loginctl show-session \"$SESSION_ID\" -p VTNr --value 2>/dev/null || true); "
+              "if [ -n \"$VTNR\" ] && [ \"$VTNR\" != \"0\" ]; then sudo chvt \"$VTNR\" || true; break; fi; "
+              "fi; done; "
               "sleep 8; "
               "echo KIYAN_PROBE1_DONE_$((100+23))\n"
           )
@@ -240,6 +247,9 @@ jobs:
               "if pgrep -u root -x calamares >/dev/null 2>&1; then echo CALAMARES_GUI_ALIVE_$((70+7)); fi; "
               "break; "
               "fi; sleep 1; done; "
+              "if ! pgrep -u root -x calamares >/dev/null 2>&1; then "
+              "cat /tmp/cal_wrap.log /tmp/calamares-launch.log 2>/dev/null || true; "
+              "fi; "
               "echo KIYAN_PROBE3_DONE_$((300+45))\n"
           )
 
