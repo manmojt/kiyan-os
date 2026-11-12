@@ -177,10 +177,10 @@ rm -f /tmp/fsws.zip
 chmod -R a+rX /usr/share/gnome-shell/extensions/blur-my-shell@aunetx \
               /usr/share/gnome-shell/extensions/fullscreen-to-empty-workspace@aiono.dev
 
-# 6. Install LocalSend v1.18.2 Native .deb
+# 6. Install LocalSend v1.18.2 Native .deb (with APT dependency resolution for ayatana-appindicator)
 curl -fsSL --retry 4 -o /tmp/localsend.deb \
     "https://github.com/localsend/localsend/releases/download/v1.18.2/LocalSend-1.18.2-linux-x86-64.deb"
-dpkg -i /tmp/localsend.deb
+apt-get install -y --no-install-recommends /tmp/localsend.deb
 rm -f /tmp/localsend.deb
 ln -sfn /opt/localsend_app/localsend_app /usr/bin/localsend
 
@@ -208,11 +208,11 @@ for a in rel.get("assets", []):
         break
 PY
 )
-    if [[ -n "${CODIUM_URL}" ]]; then
-        curl -fsSL --retry 4 -o /tmp/codium.deb "${CODIUM_URL}"
-        apt-get install -y --no-install-recommends /tmp/codium.deb
-        rm -f /tmp/codium.deb
-    fi
+    test -n "${CODIUM_URL}"
+    curl -fsSL --retry 4 -o /tmp/codium.deb "${CODIUM_URL}"
+    apt-get install -y --no-install-recommends /tmp/codium.deb
+    rm -f /tmp/codium.deb
+    ln -sfn /usr/share/codium/bin/codium /usr/bin/codium
 fi
 
 # Verify mandatory binaries exist

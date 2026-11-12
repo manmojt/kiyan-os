@@ -303,15 +303,15 @@ PROMPT 0
 TIMEOUT 30
 DEFAULT kian
 
-MENU TITLE Kiyan OS v3 (Liquid Crystal Edition)
+MENU TITLE Kiyan OS v4 (${KIYAN_EDITION:-core} Edition)
 
 LABEL kian
-  MENU LABEL Start or Install Kiyan OS v3 (Liquid Crystal Wayland)
+  MENU LABEL Start or Install Kiyan OS v4
   KERNEL /casper/vmlinuz
   APPEND initrd=/casper/initrd boot=casper preempt=full split_lock_mitigate=0 amdgpu.abmlevel=0 nouveau.config=NvGspRm=1 console=ttyS0,115200 console=tty0 quiet splash loglevel=0 rd.systemd.show_status=false rd.udev.log_level=0 vt.global_cursor_default=0 acpi_osi="Windows 2020" ---
 
 LABEL safe
-  MENU LABEL Start or Install Kiyan OS v3 (Safe Graphics Mode)
+  MENU LABEL Start or Install Kiyan OS v4 (Safe Graphics Mode)
   KERNEL /casper/vmlinuz
   APPEND initrd=/casper/initrd boot=casper nomodeset console=ttyS0,115200 console=tty0 quiet splash loglevel=0 vt.global_cursor_default=0 ---
 EOF
@@ -336,7 +336,7 @@ XORRISO_ARGS=(
     -as mkisofs
     -iso-level 3
     -full-iso9660-filenames
-    -volid "KIAN_OS_V3"
+    -volid "KIYAN_OS_V4"
     -output "${TARGET_ISO}"
 )
 
