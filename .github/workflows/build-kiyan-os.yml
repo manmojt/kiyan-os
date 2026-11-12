@@ -256,9 +256,9 @@ jobs:
           )
 
           probe2_cmd = (
-              "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus "
-              "XDG_RUNTIME_DIR=/run/user/1000 "
-              "WAYLAND_DISPLAY=wayland-0 "
+              "env $(sudo tr '\\0' '\\n' < /proc/$(pgrep -u kian -xo plasmashell)/environ | "
+              "grep -E '^(DBUS_SESSION_BUS_ADDRESS|XDG_RUNTIME_DIR|WAYLAND_DISPLAY|DISPLAY)=') "
+              "QT_QPA_PLATFORM='wayland;xcb' "
               "kioclient5 exec /home/kian/Desktop/calamares.desktop >/tmp/kio_calamares.log 2>&1 & "
               "for i in $(seq 1 30); do "
               "if pgrep -u root -x calamares >/dev/null 2>&1; then "
@@ -268,7 +268,7 @@ jobs:
               "fi; "
               "break; "
               "fi; sleep 1; done; "
-              "tail -n 25 /tmp/kio_calamares.log 2>/dev/null; "
+              "tail -n 25 /tmp/kio_calamares.log /tmp/calamares-launch.log 2>/dev/null; "
               "echo KIAN_PROBE2_DONE_$((200+34))\n"
           )
 

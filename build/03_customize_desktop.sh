@@ -165,6 +165,7 @@ mkdir -p "${TARGET_ROOTFS}/etc/profile.d" \
 cat << 'EOF' > "${TARGET_ROOTFS}/etc/profile.d/kian-wayland.sh"
 # KIAN-OS v3 Pure Wayland Session Defaults
 export MOZ_ENABLE_WAYLAND=1
+export QT_QPA_PLATFORM="wayland;xcb"
 EOF
 chmod 0644 "${TARGET_ROOTFS}/etc/profile.d/kian-wayland.sh"
 
@@ -377,7 +378,7 @@ if [[ ${EUID:-$(id -u)} -eq 0 ]]; then
         done
     fi
     export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-wayland;xcb}"
-    exec /usr/bin/calamares -D6 "$@"
+    exec /usr/bin/calamares -D6 "$@" >>/tmp/calamares-launch.log 2>&1
 fi
 
 USER_UID="$(id -u)"
