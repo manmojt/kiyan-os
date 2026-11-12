@@ -139,6 +139,7 @@ unsquashfs -f -d "${WORK_DIR}/sq" "${WORK_DIR}/filesystem.squashfs" \
     usr/bin/pkexec \
     usr/bin/calamares \
     usr/bin/firefox \
+    usr/lib/qt5/bin/qdbus \
     usr/bin/qdbus-qt5 \
     usr/bin/kdialog \
     usr/bin/kian-install-os \
@@ -197,7 +198,8 @@ SQ="${WORK_DIR}/sq"
 test -x "${SQ}/usr/bin/pkexec"
 test -x "${SQ}/usr/bin/calamares"
 test -f "${SQ}/usr/share/applications/firefox.desktop"
-test -x "${SQ}/usr/bin/qdbus-qt5"
+test -x "${SQ}/usr/lib/qt5/bin/qdbus"
+test -L "${SQ}/usr/bin/qdbus-qt5"
 test -x "${SQ}/usr/bin/kdialog"
 test -x "${SQ}/usr/bin/kian-install-os"
 test -x "${SQ}/usr/bin/kian-theme-gui"

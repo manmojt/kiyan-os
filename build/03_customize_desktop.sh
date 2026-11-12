@@ -144,10 +144,15 @@ ln -sfn /opt/localsend_app/localsend_app /usr/bin/localsend
 test -x /usr/bin/localsend_app
 test -f /usr/share/applications/localsend_app.desktop
 
+# Ensure /usr/bin/qdbus-qt5 & /usr/bin/qdbus point directly to real Qt5 qdbus binary
+ln -sfn /usr/lib/qt5/bin/qdbus /usr/bin/qdbus-qt5
+ln -sfn /usr/lib/qt5/bin/qdbus /usr/bin/qdbus
+
 # Verify mandatory desktop, Firefox, qdbus-qt5, display EDID/Wayland & installer binaries exist right now
 test -x /usr/bin/pkexec
 test -x /usr/bin/calamares
 test -x /usr/bin/firefox
+test -x /usr/lib/qt5/bin/qdbus
 test -x /usr/bin/qdbus-qt5
 test -x /usr/bin/kdialog
 test -x /usr/bin/kwin_wayland
