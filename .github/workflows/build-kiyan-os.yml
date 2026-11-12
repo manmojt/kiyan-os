@@ -257,6 +257,9 @@ jobs:
               "for i in $(seq 1 30); do pgrep -u kian -x ksplashqml >/dev/null 2>&1 || break; sleep 1; done; "
               "for i in $(seq 1 30); do test -f /home/kian/.config/kian/.initialized_v3 && break; sleep 1; done; "
               "sleep 4; "
+              "PANEL_COUNT=$(env $(sudo tr '\\0' '\\n' < /proc/$(pgrep -u kian -xo plasmashell)/environ | grep -E '^(DBUS_SESSION_BUS_ADDRESS|XDG_RUNTIME_DIR)=') qdbus-qt5 org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript 'print(panels().length)' 2>/dev/null || echo 0); "
+              "echo PLASMA_PANEL_COUNT_${PANEL_COUNT}; "
+              "test \"${PANEL_COUNT}\" = \"2\" && echo MACOS_AQUA_PANELS_OK_$((60+6)); "
               "echo KIAN_PROBE1_DONE_$((100+23))\n"
           )
 
@@ -373,6 +376,7 @@ jobs:
           grep -q "/dev/ntsync" /tmp/qemu-live/live_serial.log
           grep -q "SQUASHFS_SOURCE_OK_55" /tmp/qemu-live/live_serial.log
           grep -q "PLASMA_WAYLAND_READY_42" /tmp/qemu-live/live_serial.log
+          grep -q "MACOS_AQUA_PANELS_OK_66" /tmp/qemu-live/live_serial.log
           grep -q "CALAMARES_GUI_ALIVE_77" /tmp/qemu-live/live_serial.log
           if grep -qi "Kernel panic" /tmp/qemu-live/live_serial.log; then
             echo "FATAL: Kernel panic detected during Live ISO boot!" >&2

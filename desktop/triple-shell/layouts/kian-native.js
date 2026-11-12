@@ -17,12 +17,16 @@ for (var i = 0; i < existingPanels.length; i++) {
     existingPanels[i].remove();
 }
 
-var panel = new Panel("org.kde.plasma.panel");
+var panel = new Panel;
 panel.location = "bottom";
-panel.height = 56;
-panel.floating = true;
+panel.height = 54;
 panel.alignment = "center";
 panel.hiding = "none";
+try { panel.floating = true; } catch (e) {}
+try {
+    panel.minimumLength = 560;
+    panel.maximumLength = 780;
+} catch (e) {}
 
 var kickoff = panel.addWidget("org.kde.plasma.kickoff");
 kickoff.currentConfigGroup = ["General"];
@@ -43,13 +47,6 @@ taskmanager.writeConfig("showOnlyCurrentScreen", true);
 taskmanager.writeConfig("showOnlyCurrentDesktop", true);
 
 var systray = panel.addWidget("org.kde.plasma.systemtray");
-systray.currentConfigGroup = ["General"];
-systray.writeConfig("extraItems", [
-    "org.kde.plasma.networkmanagement",
-    "org.kde.plasma.volume",
-    "org.kde.plasma.battery",
-    "org.kde.plasma.bluetooth"
-]);
 
 var clock = panel.addWidget("org.kde.plasma.digitalclock");
 clock.currentConfigGroup = ["Appearance"];

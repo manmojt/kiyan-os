@@ -18,10 +18,9 @@ for (var i = 0; i < existingPanels.length; i++) {
 }
 
 // Panel 1: Top 28px Frosted Global Menu Bar
-var topBar = new Panel("org.kde.plasma.panel");
+var topBar = new Panel;
 topBar.location = "top";
 topBar.height = 28;
-topBar.floating = false;
 topBar.hiding = "none";
 
 var kianMenu = topBar.addWidget("org.kde.plasma.kickoff");
@@ -38,13 +37,6 @@ topSpacer.currentConfigGroup = ["General"];
 topSpacer.writeConfig("expanding", true);
 
 var topTray = topBar.addWidget("org.kde.plasma.systemtray");
-topTray.currentConfigGroup = ["General"];
-topTray.writeConfig("extraItems", [
-    "org.kde.plasma.networkmanagement",
-    "org.kde.plasma.volume",
-    "org.kde.plasma.battery",
-    "org.kde.plasma.bluetooth"
-]);
 
 var topClock = topBar.addWidget("org.kde.plasma.digitalclock");
 topClock.currentConfigGroup = ["Appearance"];
@@ -53,13 +45,16 @@ topClock.writeConfig("customDateFormat", "EEE MMM d  h:mm a");
 topClock.writeConfig("showSeconds", false);
 
 // Panel 2: Bottom Floating Centered macOS Dock
-var dock = new Panel("org.kde.plasma.panel");
+var dock = new Panel;
 dock.location = "bottom";
-dock.height = 60;
+dock.height = 58;
 dock.alignment = "center";
-dock.floating = true;
 dock.hiding = "none";
-dock.lengthMode = "fit";
+try { dock.floating = true; } catch (e) {}
+try {
+    dock.minimumLength = 340;
+    dock.maximumLength = 520;
+} catch (e) {}
 
 var dockTasks = dock.addWidget("org.kde.plasma.icontasks");
 dockTasks.currentConfigGroup = ["General"];

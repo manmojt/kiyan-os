@@ -17,12 +17,12 @@ for (var i = 0; i < existingPanels.length; i++) {
     existingPanels[i].remove();
 }
 
-var taskbar = new Panel("org.kde.plasma.panel");
+var taskbar = new Panel;
 taskbar.location = "bottom";
 taskbar.height = 48;
-taskbar.floating = false;
 taskbar.alignment = "center";
 taskbar.hiding = "none";
+try { taskbar.floating = false; } catch (e) {}
 
 var leftSpacer = taskbar.addWidget("org.kde.plasma.panelspacer");
 leftSpacer.currentConfigGroup = ["General"];
@@ -52,13 +52,6 @@ rightSpacer.currentConfigGroup = ["General"];
 rightSpacer.writeConfig("expanding", true);
 
 var systray = taskbar.addWidget("org.kde.plasma.systemtray");
-systray.currentConfigGroup = ["General"];
-systray.writeConfig("extraItems", [
-    "org.kde.plasma.networkmanagement",
-    "org.kde.plasma.volume",
-    "org.kde.plasma.battery",
-    "org.kde.plasma.notifications"
-]);
 
 var clock = taskbar.addWidget("org.kde.plasma.digitalclock");
 clock.currentConfigGroup = ["Appearance"];
