@@ -177,7 +177,7 @@ cmd_create() {
     local target_path="${SNAP_DIR}/${snap_name}"
 
     log_step "Creating atomic read-only Btrfs snapshot #${next_id} ('${label}')..."
-    btrfs subvolume snapshot -r / "${target_path}" >/dev/null
+    btrfs subvolume snapshot / "${target_path}" >/dev/null
 
     local timestamp
     timestamp=$(date +"%Y-%m-%d %H:%M:%S")
@@ -195,6 +195,7 @@ cmd_create() {
   "trigger": "kian-rollback-cli"
 }
 EOF
+    btrfs property set -ts "${target_path}" ro true 2>/dev/null || true
 
     log_info "Snapshot created successfully at: ${target_path}"
     

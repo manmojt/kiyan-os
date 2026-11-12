@@ -18,13 +18,14 @@ set -euo pipefail
 # Global Distribution & Architecture Metadata
 # ==============================================================================
 export DISTRO_NAME="KIAN-OS"
-export DISTRO_VERSION="3.0.0"
+export DISTRO_VERSION="4.0.0"
 export DISTRO_CODENAME="noble"
 export DISTRO_ARCH="amd64"
-export KERNEL_VERSION="6.8.12-kian-v3"
-export KERNEL_BASELINE="6.8"
-export KERNEL_PKG_VERSION="3.0.0-1"
-export ISO_NAME="kian-os-v3-noble-amd64.iso"
+export KIYAN_EDITION="${KIYAN_EDITION:-core}"
+export KERNEL_VERSION="7.3.4-1-liquorix-amd64"
+export KERNEL_BASELINE="7.3"
+export KERNEL_PKG_VERSION="4.0.0-1"
+export ISO_NAME="kiyan-os-v4-${KIYAN_EDITION}-noble-amd64.iso"
 
 # ==============================================================================
 # Workspace & Directory Topography

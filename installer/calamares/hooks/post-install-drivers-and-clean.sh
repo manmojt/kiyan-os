@@ -123,6 +123,23 @@ rm -f "$TARGET_ROOT/etc/sudoers.d/casper"
 rm -f "$TARGET_ROOT/etc/systemd/system/casper-md5check.service"
 rm -f "$TARGET_ROOT/etc/initramfs-tools/scripts/casper-bottom/99kian_autologin"
 
+# Sanitize GDM3 live autologin so installed system shows clean Wayland login screen
+if [[ -f "$TARGET_ROOT/etc/gdm3/custom.conf" ]]; then
+    cat << 'GDM_EOF' > "$TARGET_ROOT/etc/gdm3/custom.conf"
+[daemon]
+WaylandEnable=true
+DefaultSession=zorin-wayland.desktop
+
+[security]
+
+[xdmcp]
+
+[chooser]
+
+[debug]
+GDM_EOF
+fi
+
 # Rewrite /etc/sddm.conf.d/wayland.conf WITHOUT [Autologin] so installed system
 # uses pure Wayland greeter (or Calamares's explicit /etc/sddm.conf choice)
 if [[ -d "$TARGET_ROOT/etc/sddm.conf.d" ]]; then

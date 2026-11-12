@@ -158,6 +158,7 @@ EOF
 # Copy host runner /etc/hosts DoH mappings temporarily so chroot APT resolves mirrors instantly on IPv4
 cp -f "${TARGET_ROOTFS}/etc/hosts" "${TARGET_ROOTFS}/etc/hosts.kiyan_clean"
 cat /etc/hosts >> "${TARGET_ROOTFS}/etc/hosts" 2>/dev/null || true
+ensure_mok_keys
 mkdir -p "${TARGET_ROOTFS}/etc/ssl/certs" "${TARGET_ROOTFS}/usr/share/kian/keys"
 if [[ -f "${KEYS_DIR}/kian_mok.der" ]]; then
     cp "${KEYS_DIR}/kian_mok.der" "${TARGET_ROOTFS}/etc/ssl/certs/kian_mok.der"
@@ -168,25 +169,15 @@ if [[ -f "${KEYS_DIR}/kian_mok.pem" ]]; then
     cp "${KEYS_DIR}/kian_mok.pem" "${TARGET_ROOTFS}/usr/share/kian/keys/kian_mok.pem"
 fi
 
-# Stage Kernel Packages into Chroot (Mandatory in real builds!)
+# Stage Optional Pre-Compiled Kernel Packages into Chroot (if present; Liquorix 7.3 + HWE 7.0 are also installed via APT!)
 mkdir -p "${TARGET_ROOTFS}/tmp/kian_pkgs"
-FOUND_PKGS=0
 for pkg_dir in "${KERNEL_PKGS_DIR}" "${PROJECT_ROOT}/build/kernel_pkgs" "${PROJECT_ROOT}/build/out/kernel_pkgs"; do
-    if compgen -G "${pkg_dir}/linux-image*kian-v3*.deb" > /dev/null; then
+    if compgen -G "${pkg_dir}/linux-image*.deb" > /dev/null; then
         cp -u "${pkg_dir}"/*.deb "${TARGET_ROOTFS}/tmp/kian_pkgs/"
-        log_success "Staged linux-kian v3 packages from ${pkg_dir} into chroot /tmp/kian_pkgs/."
-        FOUND_PKGS=1
+        log_success "Staged optional kernel packages from ${pkg_dir} into chroot /tmp/kian_pkgs/."
         break
     fi
 done
-if [[ $FOUND_PKGS -eq 0 ]]; then
-    if [[ "${DRY_RUN}" == "1" ]]; then
-        log_warn "[DRY-RUN] No pre-compiled kernel deb packages found in ${KERNEL_PKGS_DIR}."
-    else
-        log_error "FATAL: Mandatory linux-kian v3 .deb packages missing from ${KERNEL_PKGS_DIR}!"
-        exit 1
-    fi
-fi
 
 # ------------------------------------------------------------------------------
 # 5. Configure Hardware Modules, NTSync Udev & Sysctl Performance Tuning
@@ -218,12 +209,7 @@ btrfs
 overlay
 EOF
 
-# Auto-load NTSync synchronization primitive driver & expose /dev/ntsync (0666) for Wine/Proton
-cat << 'EOF' > "${TARGET_ROOTFS}/etc/modules-load.d/kian-ntsync.conf"
-# KIAN-OS v3 Windows NT Synchronization Primitive Driver
-ntsync
-EOF
-
+# Expose /dev/ntsync (0666) for Wine/Proton (built into Linux 7.3 Liquorix via CONFIG_NTSYNC=y)
 cat << 'EOF' > "${TARGET_ROOTFS}/etc/udev/rules.d/99-ntsync.rules"
 KERNEL=="ntsync", MODE="0666", TAG+="uaccess"
 EOF
@@ -286,9 +272,9 @@ APT_EOF
 
 apt-get update
 
-# Core Base System, Bootloaders (UEFI + BIOS), GPU/Wi-Fi Firmware + RegDB, Mesa DRI & Dual Kernels
+# Core Base System, Bootloaders (UEFI + BIOS), GPU/Wi-Fi Firmware + RegDB, Mesa DRI & Ubuntu HWE 7.0 Fallback Kernel
 apt-get -o Acquire::Retries=3 install -y --no-install-recommends \
-    ca-certificates apt-transport-https gnupg \
+    ca-certificates apt-transport-https gnupg gpg \
     systemd systemd-sysv udev dbus dbus-user-session sudo locales tzdata \
     network-manager wpasupplicant wireless-regdb iw dnsmasq-base \
     btrfs-progs snapper cryptsetup cryptsetup-initramfs \
@@ -299,7 +285,17 @@ apt-get -o Acquire::Retries=3 install -y --no-install-recommends \
     libgl1-mesa-dri libegl-mesa0 libgbm1 mesa-vulkan-drivers mesa-va-drivers vulkan-tools \
     ubuntu-drivers-common pciutils usbutils dmidecode \
     curl wget nano iproute2 iputils-ping kmod zstd xz-utils \
-    linux-image-generic linux-headers-generic
+    linux-image-generic-hwe-24.04 linux-headers-generic-hwe-24.04
+
+# Add Liquorix Next-Gen Desktop Superkernel PPA (Linux 7.3, 1000Hz, PDS/ZEN, Native NTSync, Native TCP BBRv3, 2026 AMDGPU)
+install -d -m 0755 /etc/apt/keyrings
+curl -fsSL "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x9AE4078033F8024D" | gpg --dearmor -o /etc/apt/keyrings/liquorix.gpg
+chmod 0644 /etc/apt/keyrings/liquorix.gpg
+cat << 'LIQ_EOF' > /etc/apt/sources.list.d/liquorix.list
+deb [signed-by=/etc/apt/keyrings/liquorix.gpg] https://ppa.launchpadcontent.net/damentz/liquorix/ubuntu noble main
+LIQ_EOF
+apt-get -o Acquire::Retries=3 update
+apt-get -o Acquire::Retries=3 install -y --no-install-recommends linux-image-liquorix-amd64 linux-headers-liquorix-amd64
 
 # Verify mandatory hardware GPU/Wi-Fi firmware, regulatory.db & BIOS/UEFI GRUB modules exist right now
 test -d /usr/lib/firmware/amdgpu
@@ -364,20 +360,17 @@ export BUILD_SYSTEM="Ubuntu"
 export FLAVOUR="kian"
 EOF
 
-# Install Verified Kian v3 Superkernel Debs (ZERO swallowed errors!)
-echo ":: Installing verified linux-kian v3 superkernel packages inside chroot..."
-dpkg -i /tmp/kian_pkgs/*.deb
+# Sign Primary Liquorix 7.3 Superkernel with Kiyan OS MOK Key for UEFI Secure Boot & Set Default Symlinks
 rm -rf /tmp/kian_pkgs
-
-KVER=$(ls /lib/modules/ 2>/dev/null | grep -E "^6\.8\..*-kian-v3$" | sort -V | tail -n 1)
+KVER=$(ls /lib/modules/ 2>/dev/null | grep -E "liquorix-amd64$" | sort -V | tail -n 1)
 if [[ -z "${KVER}" ]]; then
-    echo "FATAL: linux-kian v3 modules directory not found in /lib/modules!" >&2
+    echo "FATAL: Primary Liquorix superkernel modules directory not found in /lib/modules!" >&2
     exit 1
 fi
 test -f "/boot/vmlinuz-${KVER}"
-echo ":: Verified superkernel installed in rootfs: /boot/vmlinuz-${KVER}"
+echo ":: Verified primary superkernel installed in rootfs: /boot/vmlinuz-${KVER}"
 
-# Point unversioned /boot/vmlinuz & /boot/initrd.img symlinks to linux-kian v3 (not generic!)
+# Point unversioned /boot/vmlinuz & /boot/initrd.img symlinks to Primary Superkernel
 ln -sfn "vmlinuz-${KVER}" /boot/vmlinuz
 ln -sfn "initrd.img-${KVER}" /boot/initrd.img
 
@@ -418,6 +411,18 @@ grub-editenv /boot/grub/grubenv set bootlimit=3
 apt-get clean
 rm -rf /var/lib/apt/lists/*
 CHROOT_EOF
+fi
+
+# Secure Boot MOK Sign Primary Liquorix 7.3 Superkernel inside Rootfs
+if [[ "${DRY_RUN}" != "1" && -f "${KEYS_DIR}/kian_mok.priv" && -f "${KEYS_DIR}/kian_mok.pem" ]]; then
+    PRIMARY_VMLINUZ=$(find "${TARGET_ROOTFS}/boot" -maxdepth 1 -type f -name "vmlinuz-*liquorix*" | sort -V | tail -n 1 || true)
+    if [[ -n "${PRIMARY_VMLINUZ}" && -f "${PRIMARY_VMLINUZ}" ]]; then
+        log_info "Signing primary superkernel ($(basename "${PRIMARY_VMLINUZ}")) with Kiyan OS MOK key..."
+        sbsign --key "${KEYS_DIR}/kian_mok.priv" --cert "${KEYS_DIR}/kian_mok.pem" \
+            --output "${PRIMARY_VMLINUZ}.signed" "${PRIMARY_VMLINUZ}"
+        mv -f "${PRIMARY_VMLINUZ}.signed" "${PRIMARY_VMLINUZ}"
+        sbverify --cert "${KEYS_DIR}/kian_mok.pem" "${PRIMARY_VMLINUZ}"
+    fi
 fi
 
 # ------------------------------------------------------------------------------

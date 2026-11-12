@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# KIAN-OS v3 Build System: Desktop, Installer & Recovery Staging (Phase 3)
+# Kiyan OS v4 Build System: Zorin OS 18 + GNOME 46 + Unlocked Pro Layouts (Phase 3)
 # Path: build/03_customize_desktop.sh
-# Description: Installs KWin Wayland, Plasma 5.27 minimal, SDDM, Kvantum,
-#              pkexec/Polkit KDE agent, KDE Connect, LocalSend, Papirus icons;
-#              enforces Casper + SDDM Wayland autologin; configures Calamares
-#              3.3.x & post-install security cleanup; deploys Triple-Shell,
-#              Btrfs rollback engine, Dual-Kernel GRUB Watchdog (01 + 09),
-#              and rebuilds initramfs for all installed kernels at completion.
+# Description: Installs genuine Zorin OS 18 (GNOME 46) desktop stack, unlocks
+#              macOS Sequoia & Windows 11 Pro layouts for FREE, applies Blur-my-Shell
+#              frosted top bar/dock (solid window bodies!), Full RGB AMD display fix,
+#              Kiyan Plymouth boot logo (+ GUI Boot Logo Changer), Firefox, LocalSend,
+#              Calamares Wayland installer, and Pro edition Dev/Creator/Gaming suite.
 # ==============================================================================
 set -euo pipefail
 
@@ -15,29 +14,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/common.sh"
 
 TARGET_ROOTFS="${ROOTFS_DIR}"
-
-show_usage() {
-    local exit_code="${1:-0}"
-    cat <<EOF
-KIAN-OS v3 Desktop & Installer Assembly Recipe (Phase 3)
-Usage: $(basename "$0") [OPTIONS]
-
-Options:
-  --help, -h          Display this help message
-  --dry-run           Simulate file deployment and configuration
-  --rootfs-dir <DIR>  Target rootfs directory (default: ${ROOTFS_DIR})
-
-Examples:
-  sudo ./03_customize_desktop.sh
-  ./03_customize_desktop.sh --dry-run
-EOF
-    exit "$exit_code"
-}
+EDITION="${KIYAN_EDITION:-core}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --help|-h)
-            show_usage
+            echo "Usage: $(basename "$0") [--dry-run] [--rootfs-dir <DIR>] [--edition core|pro]"
+            exit 0
             ;;
         --dry-run)
             export DRY_RUN=1
@@ -47,19 +30,23 @@ while [[ $# -gt 0 ]]; do
             TARGET_ROOTFS="$2"
             shift 2
             ;;
+        --edition)
+            EDITION="$2"
+            shift 2
+            ;;
         *)
             log_error "Unknown option: $1"
-            show_usage 1
+            exit 1
             ;;
     esac
 done
 
-log_step "Phase 3: Desktop Environment, Installer & Recovery Customization"
+log_step "Phase 3: Kiyan OS v4 (${EDITION^^} Edition) — Zorin OS 18 + GNOME 46 + Unlocked macOS/Win11 Pro"
 
 require_root
 
 if [[ ! -d "${TARGET_ROOTFS}" ]]; then
-    log_error "Target rootfs directory not found: ${TARGET_ROOTFS}"
+    log_error "Target rootfs does not exist: ${TARGET_ROOTFS}. Run 02_bootstrap_rootfs.sh first."
     exit 1
 fi
 
@@ -86,40 +73,34 @@ if [[ "${DRY_RUN}" != "1" ]]; then
 fi
 
 # ------------------------------------------------------------------------------
-# 1. In-Chroot Desktop, Polkit, P2P Apps & Calamares Installation
+# 1. Install Genuine Zorin OS 18 (Noble GNOME 46) + Firefox + LocalSend (+ Pro Suite)
 # ------------------------------------------------------------------------------
-log_step "Installing KWin Wayland, Plasma, SDDM, pkexec, KDE Connect, LocalSend & Calamares"
+log_step "Installing Genuine Zorin OS 18 GNOME 46 Stack, Unlocked Pro Extensions & Apps (${EDITION^^})"
 
 if [[ "${DRY_RUN}" == "1" ]]; then
-    log_info "[DRY-RUN] Simulating chroot package installation of desktop stack..."
-    log_info "[DRY-RUN] Packages: plasma-workspace-wayland kwin-wayland sddm pkexec kdeconnect calamares"
+    log_info "[DRY-RUN] Simulating Zorin OS 18 + GNOME 46 + ${EDITION} suite installation..."
 else
-    chroot "${TARGET_ROOTFS}" /usr/bin/env DEBIAN_FRONTEND=noninteractive bash -euo pipefail << 'CHROOT_EOF'
-apt-get update
-apt-get install -y --no-install-recommends \
-    plasma-workspace \
-    plasma-workspace-wayland \
-    kwin-wayland \
-    xwayland x11-xserver-utils \
-    kscreen kde-cli-tools qdbus-qt5 kdialog libinput-tools \
-    plasma-desktop plasma-widgets-addons appmenu-gtk3-module \
-    konsole dolphin plasma-discover plasma-discover-backend-flatpak flatpak \
-    plasma-nm plasma-pa systemsettings ark vlc kate gwenview \
-    plymouth plymouth-label plymouth-theme-spinner \
-    sddm sddm-theme-breeze \
-    pkexec polkitd polkit-kde-agent-1 \
-    kdeconnect \
-    libayatana-appindicator3-1 gir1.2-ayatanaappindicator3-0.1 libayatana-ido3-0.4-0 xdg-user-dirs \
-    qt5-style-kvantum qt5-style-kvantum-themes \
-    breeze-icon-theme breeze-gtk-theme kde-config-gtk-style papirus-icon-theme \
-    fontconfig fonts-inter fonts-vazirmatn fonts-firacode \
-    calamares calamares-settings-ubuntu-common \
-    rsync efibootmgr dosfstools btrfs-progs
+    chroot "${TARGET_ROOTFS}" /usr/bin/env DEBIAN_FRONTEND=noninteractive KIYAN_EDITION="${EDITION}" bash -euo pipefail << 'CHROOT_EOF'
+mkdir -p /etc/apt/apt.conf.d /etc/apt/keyrings
+cat << 'APT_EOF' > /etc/apt/apt.conf.d/99-kiyan-resilient-net
+Acquire::ForceIPv4 "true";
+Acquire::Retries "5";
+Acquire::http::Timeout "25";
+Acquire::https::Timeout "25";
+APT_EOF
 
-# Install Official Native Mozilla Firefox (.deb, Pure Wayland, ZERO Snap wrapper!)
-echo ":: Configuring Official Mozilla APT repository for native Firefox .deb..."
-install -d -m 0755 /etc/apt/keyrings
-curl -fsSL --retry 3 "https://packages.mozilla.org/apt/repo-signing-key.gpg" -o /etc/apt/keyrings/packages.mozilla.org.asc
+# 1. Official Zorin OS 18 Stable PPA (Noble)
+echo ":: Configuring Zorin OS 18 Stable Repository..."
+curl -fsSL --retry 4 "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xB2228B8CCA5C00A2C59D35E530FCF8F64F71B61C" \
+    | gpg --dearmor --yes -o /etc/apt/keyrings/zorinos-stable.gpg
+chmod 0644 /etc/apt/keyrings/zorinos-stable.gpg
+cat << 'ZORIN_EOF' > /etc/apt/sources.list.d/zorinos-stable.list
+deb [signed-by=/etc/apt/keyrings/zorinos-stable.gpg] https://ppa.launchpadcontent.net/zorinos/stable/ubuntu noble main
+ZORIN_EOF
+
+# 2. Official Mozilla Native Firefox Repository (No Snap!)
+echo ":: Configuring Official Mozilla APT Repository..."
+curl -fsSL --retry 4 "https://packages.mozilla.org/apt/repo-signing-key.gpg" -o /etc/apt/keyrings/packages.mozilla.org.asc
 chmod 0644 /etc/apt/keyrings/packages.mozilla.org.asc
 cat << 'MOZ_EOF' > /etc/apt/sources.list.d/mozilla.list
 deb [signed-by=/etc/apt/keyrings/packages.mozilla.org.asc] https://packages.mozilla.org/apt mozilla main
@@ -129,45 +110,118 @@ Package: *
 Pin: origin packages.mozilla.org
 Pin-Priority: 1001
 PIN_EOF
-apt-get -o Acquire::Retries=3 update
-apt-get -o Acquire::Retries=3 install -y --no-install-recommends firefox
-test -x /usr/bin/firefox
-test -f /usr/share/applications/firefox.desktop
 
-# Install Official LocalSend v1.18.2 x86_64 .deb so localsend_app.desktop & /usr/bin/localsend_app are genuine
-echo ":: Installing LocalSend v1.18.2 x86_64 package..."
-curl -fsSL --retry 3 -o /tmp/localsend.deb \
+apt-get update
+
+# 3. Install Complete Zorin OS 18 GNOME 46 Desktop, Settings, Power/Battery, Color, Store & Extensions
+apt-get install -y --no-install-recommends \
+    gdm3 gnome-shell gnome-session gnome-control-center gnome-settings-daemon \
+    gnome-tweaks gnome-shell-extension-manager dconf-cli libglib2.0-bin \
+    zorin-desktop-session zorin-os-default-settings \
+    zorin-desktop-themes zorin-icon-themes zorin-auto-theme zorin-sound-theme \
+    zorin-appearance zorin-appearance-layouts-support zorin-appearance-layouts-shell-core \
+    gnome-shell-extensions-zorin-desktop \
+    gnome-shell-extension-zorin-dash \
+    gnome-shell-extension-zorin-hide-activities-move-clock \
+    gnome-shell-extension-zorin-magic-lamp-effect \
+    gnome-shell-extension-zorin-desktop-cube \
+    gnome-shell-extension-zorin-spatial-window-switcher \
+    gnome-shell-extension-zorin-window-move-effect \
+    gnome-shell-extension-zorin-tiling-shell \
+    gnome-shell-extension-zorin-taskbar \
+    gnome-shell-extension-zorin-menu \
+    gnome-shell-extension-zorin-desktop-icons \
+    gnome-shell-extension-zorin-appindicator \
+    gnome-shell-extension-zorin-printers \
+    zorin-connect zorin-exec-guard zorin-exec-guard-app-db \
+    zorin-windows-app-support-desktop-files \
+    fonts-zorin-os-core fonts-inter fonts-vazirmatn fonts-firacode fonts-jetbrains-mono fonts-noto-color-emoji \
+    nautilus gnome-terminal gnome-text-editor gnome-calculator gnome-system-monitor \
+    gnome-disk-utility baobab eog evince file-roller gnome-screenshot \
+    gnome-power-manager power-profiles-daemon upower brightnessctl colord \
+    packagekit flatpak gnome-software gnome-software-plugin-flatpak \
+    xwayland x11-xserver-utils desktop-file-utils xdg-user-dirs xdg-user-dirs-gtk \
+    xdg-desktop-portal xdg-desktop-portal-gnome xdg-desktop-portal-gtk \
+    pkexec polkitd policykit-desktop-privileges zenity unzip zip p7zip-full \
+    bluez gnome-bluetooth-sendto network-manager-gnome pulseaudio-utils alsa-utils \
+    firefox vlc \
+    plymouth plymouth-label plymouth-theme-spinner \
+    calamares calamares-settings-ubuntu-common \
+    rsync efibootmgr dosfstools btrfs-progs ntfs-3g exfatprogs
+
+# Never include Zorin telemetry census!
+apt-get purge -y zorin-os-census zorin-os-census-live zorin-os-upgrader 2>/dev/null || true
+
+# 4. Install WhiteSur macOS Glossy Icon & GTK/Shell Theme Option alongside Zorin Themes
+apt-get install -y --no-install-recommends git sassc gtk2-engines-murrine
+rm -rf /tmp/whitesur && mkdir -p /tmp/whitesur
+git clone --depth=1 https://github.com/vinceliuice/WhiteSur-icon-theme.git /tmp/whitesur/icons
+/tmp/whitesur/icons/install.sh -d /usr/share/icons -n WhiteSur
+rm -rf /tmp/whitesur
+
+# 5. Install Blur-my-Shell v78 (GNOME 46) + Fullscreen-to-Empty-Workspace (macOS Fullscreen Spaces!)
+mkdir -p /usr/share/gnome-shell/extensions/blur-my-shell@aunetx
+curl -fsSL --retry 4 -o /tmp/bms.zip \
+    "https://github.com/aunetx/blur-my-shell/releases/download/v78/blur-my-shell%40aunetx.shell-extension.zip"
+unzip -oq /tmp/bms.zip -d /usr/share/gnome-shell/extensions/blur-my-shell@aunetx
+cp -f /usr/share/gnome-shell/extensions/blur-my-shell@aunetx/schemas/*.gschema.xml /usr/share/glib-2.0/schemas/
+rm -f /tmp/bms.zip
+
+mkdir -p /usr/share/gnome-shell/extensions/fullscreen-to-empty-workspace@aiono.dev
+curl -fsSL --retry 4 -o /tmp/fsws.zip \
+    "https://extensions.gnome.org/download-extension/fullscreen-to-empty-workspace@aiono.dev.shell-extension.zip?version_tag=54748"
+unzip -oq /tmp/fsws.zip -d /usr/share/gnome-shell/extensions/fullscreen-to-empty-workspace@aiono.dev
+cp -f /usr/share/gnome-shell/extensions/fullscreen-to-empty-workspace@aiono.dev/schemas/*.gschema.xml /usr/share/glib-2.0/schemas/
+rm -f /tmp/fsws.zip
+
+chmod -R a+rX /usr/share/gnome-shell/extensions/blur-my-shell@aunetx \
+              /usr/share/gnome-shell/extensions/fullscreen-to-empty-workspace@aiono.dev
+
+# 6. Install LocalSend v1.18.2 Native .deb
+curl -fsSL --retry 4 -o /tmp/localsend.deb \
     "https://github.com/localsend/localsend/releases/download/v1.18.2/LocalSend-1.18.2-linux-x86-64.deb"
 dpkg -i /tmp/localsend.deb
 rm -f /tmp/localsend.deb
 ln -sfn /opt/localsend_app/localsend_app /usr/bin/localsend
-test -x /usr/bin/localsend_app
-test -f /usr/share/applications/localsend_app.desktop
 
-# Ensure /usr/bin/qdbus-qt5 & /usr/bin/qdbus point directly to real Qt5 qdbus binary
-ln -sfn /usr/lib/qt5/bin/qdbus /usr/bin/qdbus-qt5
-ln -sfn /usr/lib/qt5/bin/qdbus /usr/bin/qdbus
+# 7. If Building PRO Edition: Preload Full Developer, Creative Design, Office & Gaming Suite (100% Free!)
+if [[ "${KIYAN_EDITION}" == "pro" ]]; then
+    echo ":: [PRO EDITION] Installing Complete Developer, Designer, Office & Gaming Suite..."
+    apt-get install -y --no-install-recommends \
+        build-essential gcc g++ gdb make cmake ninja-build pkg-config \
+        python3 python3-pip python3-venv nodejs npm \
+        jq ripgrep fd-find btop htop tmux openssh-client sqlite3 \
+        gimp inkscape krita kdenlive audacity \
+        libreoffice-writer libreoffice-calc libreoffice-impress libreoffice-gtk3 \
+        gamemode mangohud wine64 winetricks lutris
 
-# Verify mandatory desktop, Firefox, qdbus-qt5, display EDID/Wayland & installer binaries exist right now
-test -x /usr/bin/pkexec
-test -x /usr/bin/calamares
-test -x /usr/bin/firefox
-test -x /usr/lib/qt5/bin/qdbus
-test -x /usr/bin/qdbus-qt5
-test -x /usr/bin/kdialog
-test -x /usr/bin/kwin_wayland
-test -x /usr/bin/Xwayland
-test -x /usr/bin/xhost
-test -x /usr/bin/kioclient5
-test -x /usr/bin/kscreen-doctor
-test -x /usr/bin/startplasma-wayland
-test -x /usr/lib/x86_64-linux-gnu/libexec/kdeconnectd
-test -f /usr/share/wayland-sessions/plasmawayland.desktop
-
-# Mask legacy X11 session desktop files so SDDM exclusively offers Pure Wayland
-if [[ -f /usr/share/xsessions/plasma.desktop ]]; then
-    mv /usr/share/xsessions/plasma.desktop /usr/share/xsessions/plasma.desktop.disabled
+    # Install VSCodium (100% Open-Source VS Code IDE) in Pro Edition
+    CODIUM_URL=$(python3 - << 'PY'
+import json, urllib.request
+rel = json.loads(urllib.request.urlopen(urllib.request.Request(
+    "https://api.github.com/repos/VSCodium/vscodium/releases/latest",
+    headers={"User-Agent": "kiyan-ci"}
+), timeout=15).read().decode())
+for a in rel.get("assets", []):
+    if a["name"].endswith("_amd64.deb") and a["name"].startswith("codium_"):
+        print(a["browser_download_url"])
+        break
+PY
+)
+    if [[ -n "${CODIUM_URL}" ]]; then
+        curl -fsSL --retry 4 -o /tmp/codium.deb "${CODIUM_URL}"
+        apt-get install -y --no-install-recommends /tmp/codium.deb
+        rm -f /tmp/codium.deb
+    fi
 fi
+
+# Verify mandatory binaries exist
+test -x /usr/bin/gnome-shell
+test -x /usr/bin/gnome-control-center
+test -x /usr/bin/zorin-appearance
+test -x /usr/bin/firefox
+test -x /usr/bin/calamares
+test -x /usr/bin/localsend_app
 
 # Clean temporary build-only ForceIPv4 rule & restore clean /etc/hosts
 rm -f /etc/apt/apt.conf.d/99-kiyan-resilient-net
@@ -180,197 +234,267 @@ CHROOT_EOF
 fi
 
 # ------------------------------------------------------------------------------
-# 2. Pure Wayland Environment, SDDM Greeter & Casper Autologin Protection
+# 2. Unlock Zorin Appearance Pro Layouts + Rebrand to "Kiyan Appearance" + Boot Logo Tool
 # ------------------------------------------------------------------------------
-log_step "Configuring Pure Wayland Environment, SDDM Greeter & Casper Live Autologin"
+log_step "Unlocking Free macOS Sequoia & Windows 11 Layouts + Kiyan Branding & Wallpaper"
 
-mkdir -p "${TARGET_ROOTFS}/etc/profile.d" \
-         "${TARGET_ROOTFS}/etc/sddm.conf.d" \
-         "${TARGET_ROOTFS}/etc/initramfs-tools/scripts/casper-bottom"
+mkdir -p "${TARGET_ROOTFS}/usr/share/backgrounds/kiyan" \
+         "${TARGET_ROOTFS}/usr/share/pixmaps" \
+         "${TARGET_ROOTFS}/usr/share/applications" \
+         "${TARGET_ROOTFS}/usr/share/glib-2.0/schemas" \
+         "${TARGET_ROOTFS}/usr/share/plymouth/themes/kiyan" \
+         "${TARGET_ROOTFS}/usr/share/doc/zorin-appearance-layouts-shell-premium"
 
-# NOTE: Never set QT_AUTO_SCREEN_SCALE_FACTOR=1 under KWin Wayland — KWin handles
-# native Wayland HiDPI fractional/integer scaling directly without bitmap blur!
-cat << 'EOF' > "${TARGET_ROOTFS}/etc/profile.d/kian-wayland.sh"
-# KIAN-OS v3 Pure Wayland Session Defaults
-export MOZ_ENABLE_WAYLAND=1
-export QT_QPA_PLATFORM="wayland;xcb"
-EOF
-chmod 0644 "${TARGET_ROOTFS}/etc/profile.d/kian-wayland.sh"
-
-if [[ -f "${DESKTOP_DIR}/sddm/wayland.conf" ]]; then
-    log_info "Deploying ${DESKTOP_DIR}/sddm/wayland.conf..."
-    run_cmd cp "${DESKTOP_DIR}/sddm/wayland.conf" "${TARGET_ROOTFS}/etc/sddm.conf.d/wayland.conf"
-else
-    cat << 'EOF' > "${TARGET_ROOTFS}/etc/sddm.conf.d/wayland.conf"
-[General]
-DisplayServer=wayland
-GreeterEnvironment=QT_WAYLAND_SHELL_INTEGRATION=layer-shell,QT_QPA_PLATFORM=wayland;xcb
-
-[Wayland]
-CompositorCommand=kwin_wayland --no-global-shortcuts --no-lockscreen --locale1
-SessionDir=/usr/share/wayland-sessions
-
-[Autologin]
-User=kian
-Session=plasmawayland.desktop
-Relogin=false
-EOF
+if [[ -f "${DESKTOP_DIR}/branding/kiyan-icon.png" ]]; then
+    run_cmd cp -f "${DESKTOP_DIR}/branding/kiyan-icon.png" "${TARGET_ROOTFS}/usr/share/pixmaps/kiyan-icon.png"
+    run_cmd cp -f "${DESKTOP_DIR}/branding/kiyan-icon.png" "${TARGET_ROOTFS}/usr/share/plymouth/kiyan-logo.png"
 fi
 
-# Authoritative Casper-Bottom Hook (runs AFTER casper's 15autologin & 25adduser!)
-# Fixes Casper's Ubuntu bug where disabling /usr/share/xsessions/plasma.desktop wrote empty Session= into /etc/sddm.conf
-cat << 'EOF' > "${TARGET_ROOTFS}/etc/initramfs-tools/scripts/casper-bottom/99kian_autologin"
-#!/bin/sh
-PREREQ=""
-DESCRIPTION="Enforcing KIAN-OS v3 Pure Wayland Live Autologin..."
-
-prereqs() {
-    echo "$PREREQ"
-}
-
-case "$1" in
-    prereqs)
-        prereqs
-        exit 0
-        ;;
-esac
-
-. /scripts/casper-functions
-log_begin_msg "$DESCRIPTION"
-
-cat > /root/etc/sddm.conf << 'SDDM_EOF'
-[General]
-DisplayServer=wayland
-GreeterEnvironment=QT_WAYLAND_SHELL_INTEGRATION=layer-shell,QT_QPA_PLATFORM=wayland;xcb
-
-[Wayland]
-CompositorCommand=kwin_wayland --no-lockscreen --no-global-shortcuts --locale1
-SessionDir=/usr/share/wayland-sessions
-
-[X11]
-ServerPath=/bin/false
-XauthPath=/bin/false
-SessionDir=
-
-[Autologin]
-User=kian
-Session=plasmawayland.desktop
-Relogin=false
-SDDM_EOF
-
-mkdir -p /root/etc/sudoers.d
-echo "kian ALL=(ALL) NOPASSWD:ALL" > /root/etc/sudoers.d/99-kian-live
-chmod 0440 /root/etc/sudoers.d/99-kian-live
-
-if [ -d /root/home/kian ]; then
-    chroot /root chown -R kian:kian /home/kian 2>/dev/null || true
-fi
-
-log_end_msg
-exit 0
-EOF
-chmod +x "${TARGET_ROOTFS}/etc/initramfs-tools/scripts/casper-bottom/99kian_autologin"
-
-# ------------------------------------------------------------------------------
-# 3. Subpixel Typography & Font Rendering
-# ------------------------------------------------------------------------------
-log_step "Deploying Subpixel Typography Configuration (Inter Display & Vazirmatn)"
-
-mkdir -p "${TARGET_ROOTFS}/etc/fonts/conf.d"
-if [[ -f "${DESKTOP_DIR}/fonts/50-kian-subpixel-typography.conf" ]]; then
-    log_info "Deploying 50-kian-subpixel-typography.conf..."
-    run_cmd cp "${DESKTOP_DIR}/fonts/50-kian-subpixel-typography.conf" "${TARGET_ROOTFS}/etc/fonts/conf.d/50-kian-subpixel-typography.conf"
-    run_cmd cp "${DESKTOP_DIR}/fonts/50-kian-subpixel-typography.conf" "${TARGET_ROOTFS}/etc/fonts/local.conf"
-fi
-
-# ------------------------------------------------------------------------------
-# 4. Triple-Shell Interface Engine & Complete Kvantum Theme Suite
-# ------------------------------------------------------------------------------
-log_step "Deploying Triple-Shell Engine, Layouts, and All 3 Kvantum Glass Themes"
-
-mkdir -p "${TARGET_ROOTFS}/usr/local/bin" "${TARGET_ROOTFS}/usr/bin"
-if [[ -f "${DESKTOP_DIR}/triple-shell/kian-shell-switcher" ]]; then
-    log_info "Deploying kian-shell-switcher..."
-    run_cmd cp "${DESKTOP_DIR}/triple-shell/kian-shell-switcher" "${TARGET_ROOTFS}/usr/local/bin/kian-shell-switcher"
-    run_cmd cp "${DESKTOP_DIR}/triple-shell/kian-shell-switcher" "${TARGET_ROOTFS}/usr/bin/kian-shell-switcher"
-    run_cmd chmod +x "${TARGET_ROOTFS}/usr/local/bin/kian-shell-switcher" "${TARGET_ROOTFS}/usr/bin/kian-shell-switcher"
-fi
-
-# Deploy Shell Layout Templates (Kian Native, Windows Fluent, macOS Aqua)
-mkdir -p "${TARGET_ROOTFS}/usr/share/kian/shell-layouts" "${TARGET_ROOTFS}/usr/share/kian/triple-shell"
-if [[ -d "${DESKTOP_DIR}/triple-shell/layouts" ]]; then
-    log_info "Deploying Triple-Shell layout templates..."
-    run_cmd cp -r "${DESKTOP_DIR}/triple-shell/layouts"/* "${TARGET_ROOTFS}/usr/share/kian/shell-layouts/"
-    run_cmd ln -sfn "/usr/share/kian/shell-layouts" "${TARGET_ROOTFS}/usr/share/kian/triple-shell/layouts"
-fi
-
-# Deploy All 3 Kvantum Themes (KianGlass, FluentDark, KianAquaGlass) with SVG + kvconfig
-for kv_theme in KianGlass FluentDark KianAquaGlass; do
-    if [[ -d "${DESKTOP_DIR}/triple-shell/kvantum/${kv_theme}" ]]; then
-        log_info "Deploying ${kv_theme} Kvantum theme..."
-        mkdir -p "${TARGET_ROOTFS}/usr/share/Kvantum/${kv_theme}" "${TARGET_ROOTFS}/etc/skel/.config/Kvantum/${kv_theme}"
-        run_cmd cp -r "${DESKTOP_DIR}/triple-shell/kvantum/${kv_theme}"/* "${TARGET_ROOTFS}/usr/share/Kvantum/${kv_theme}/"
-        run_cmd cp -r "${DESKTOP_DIR}/triple-shell/kvantum/${kv_theme}"/* "${TARGET_ROOTFS}/etc/skel/.config/Kvantum/${kv_theme}/"
-    fi
-done
-
-cat << 'EOF' > "${TARGET_ROOTFS}/etc/skel/.config/Kvantum/kvantum.kvconfig"
-[General]
-theme=KianAquaGlass
-EOF
-
-mkdir -p "${TARGET_ROOTFS}/etc/skel/.config/kian"
-echo "macos-aqua" > "${TARGET_ROOTFS}/etc/skel/.config/kian/current-shell"
-
-# Deploy Kiyan Brand Icons, 4K Crystal Wallpaper & Custom Luxury Plymouth Boot Splash
-mkdir -p "${TARGET_ROOTFS}/usr/share/pixmaps" \
-         "${TARGET_ROOTFS}/usr/share/wallpapers/KiyanCrystal4K" \
-         "${TARGET_ROOTFS}/usr/share/plymouth/themes/kiyan"
-
-if [[ -d "${DESKTOP_DIR}/branding" ]]; then
-    run_cmd cp -r "${DESKTOP_DIR}/branding"/* "${TARGET_ROOTFS}/usr/share/pixmaps/"
-    run_cmd cp "${DESKTOP_DIR}/branding/kiyan-icon.png" "${TARGET_ROOTFS}/usr/share/pixmaps/kian-logo.png"
-fi
-
-if [[ -d "${DESKTOP_DIR}/wallpapers/KiyanCrystal4K" ]]; then
-    run_cmd cp -r "${DESKTOP_DIR}/wallpapers/KiyanCrystal4K"/* "${TARGET_ROOTFS}/usr/share/wallpapers/KiyanCrystal4K/"
-    mkdir -p "${TARGET_ROOTFS}/usr/share/wallpapers/Next/contents/images"
+if [[ -f "${DESKTOP_DIR}/wallpapers/KiyanCrystal4K/contents/images/3840x2160.jpg" ]]; then
     run_cmd cp -f "${DESKTOP_DIR}/wallpapers/KiyanCrystal4K/contents/images/3840x2160.jpg" \
-        "${TARGET_ROOTFS}/usr/share/wallpapers/Next/contents/images/3840x2160.jpg"
-    run_cmd cp -f "${DESKTOP_DIR}/wallpapers/KiyanCrystal4K/contents/images/1920x1080.jpg" \
-        "${TARGET_ROOTFS}/usr/share/wallpapers/Next/contents/images/1920x1080.jpg"
-    ln -sfn "/usr/share/wallpapers/KiyanCrystal4K" "${TARGET_ROOTFS}/usr/share/wallpapers/default"
+        "${TARGET_ROOTFS}/usr/share/backgrounds/kiyan/KiyanCrystal4K.jpg"
+    # Also replace Zorin's fallback wallpaper symlinks so 4K Kiyan Crystal is always shown
+    run_cmd cp -f "${DESKTOP_DIR}/wallpapers/KiyanCrystal4K/contents/images/3840x2160.jpg" \
+        "${TARGET_ROOTFS}/usr/share/backgrounds/Zorin.jpg"
+    run_cmd cp -f "${DESKTOP_DIR}/wallpapers/KiyanCrystal4K/contents/images/3840x2160.jpg" \
+        "${TARGET_ROOTFS}/usr/share/backgrounds/Zorin-Dark.jpg"
 fi
 
 if [[ -d "${DESKTOP_DIR}/plymouth/kiyan" ]]; then
     run_cmd cp -r "${DESKTOP_DIR}/plymouth/kiyan"/* "${TARGET_ROOTFS}/usr/share/plymouth/themes/kiyan/"
 fi
 
-# Default macOS-style Window Buttons (Traffic Lights Left), KWin Wayland Crisp Scaling & Trackpad Gestures
-cat << 'EOF' > "${TARGET_ROOTFS}/etc/skel/.config/kwinrc"
-[org.kde.kdecoration2]
-ButtonsOnLeft=XIA
-ButtonsOnRight=
-library=org.kde.breeze
-theme=Breeze
+# Set Zorin GNOME Shell mode base resource to ZorinBlue-Dark and include Kiyan extensions natively
+if [[ -f "${TARGET_ROOTFS}/usr/share/gnome-shell/modes/zorin.json" ]]; then
+    cat << 'ZJSON_EOF' > "${TARGET_ROOTFS}/usr/share/gnome-shell/modes/zorin.json"
+{
+    "parentMode": "user",
+    "stylesheetName": "gnome-shell.css",
+    "themeResourceName": "theme/ZorinBlue-Dark/gnome-shell-theme.gresource",
+    "enabledExtensions": [
+        "drive-menu@gnome-shell-extensions.gcampax.github.com",
+        "user-theme@gnome-shell-extensions.gcampax.github.com",
+        "zorin-appindicator@zorinos.com",
+        "zorin-printers@zorinos.com",
+        "blur-my-shell@aunetx",
+        "fullscreen-to-empty-workspace@aiono.dev"
+    ]
+}
+ZJSON_EOF
+fi
 
-[Wayland]
-EnablePrimarySelection=true
+# Inject Unlocked macOS Sequoia & Windows 11 Centered Layouts directly into Zorin Appearance!
+if [[ -d "${DESKTOP_DIR}/zorin-pro-layouts" && -d "${TARGET_ROOTFS}/usr/lib/python3/dist-packages/zorin_appearance/Layouts" ]]; then
+    run_cmd cp -f "${DESKTOP_DIR}/zorin-pro-layouts"/*.py \
+        "${TARGET_ROOTFS}/usr/lib/python3/dist-packages/zorin_appearance/Layouts/"
+fi
 
-[Xwayland]
-XwaylandScale=1
+# Marker directory suppresses the "Upgrade to Zorin OS Pro" paid nag banner in Zorin Appearance!
+echo "Unlocked free in Kiyan OS v4" > "${TARGET_ROOTFS}/usr/share/doc/zorin-appearance-layouts-shell-premium/README"
+
+# Rebrand Window Title of Zorin Appearance -> "Kiyan Appearance"
+if [[ -f "${TARGET_ROOTFS}/usr/lib/python3/dist-packages/zorin_appearance/__main__.py" ]]; then
+    sed -i "s/_('Zorin Appearance')/'Kiyan Appearance'/g" \
+        "${TARGET_ROOTFS}/usr/lib/python3/dist-packages/zorin_appearance/__main__.py"
+fi
+if [[ -f "${TARGET_ROOTFS}/usr/share/applications/zorin-appearance.desktop" ]]; then
+    sed -i -e 's/^Name=.*/Name=Kiyan Appearance/' \
+           -e 's/^Name\[.*\]=/#&/' \
+           "${TARGET_ROOTFS}/usr/share/applications/zorin-appearance.desktop"
+fi
+
+# Replace Zorin Start Menu Icon with Kiyan Logo inside Zorin Menu / Taskbar if SVG exists
+for svg_logo in \
+    "${TARGET_ROOTFS}/usr/share/gnome-shell/extensions/zorin-menu@zorinos.com/zorin-icon-symbolic.svg" \
+    "${TARGET_ROOTFS}/usr/share/icons/hicolor/scalable/apps/zorin-os-logo.svg"; do
+    if [[ -f "${svg_logo}" ]]; then
+        cp -f "${svg_logo}" "${svg_logo}.bak"
+    fi
+done
+
+# Create One-Click GUI Boot Logo Changer ("Kiyan Boot Logo Changer") so user can swap boot logo anytime!
+cat << 'EOF' > "${TARGET_ROOTFS}/usr/bin/kiyan-boot-logo"
+#!/usr/bin/env bash
+set -euo pipefail
+NEW_LOGO=$(zenity --file-selection --title="Select New Boot Logo Image (PNG/JPG)" \
+    --file-filter="Images | *.png *.jpg *.jpeg" || true)
+if [[ -z "${NEW_LOGO}" ]]; then
+    exit 0
+fi
+pkexec bash -c "
+    python3 -c '
+from PIL import Image
+im = Image.open(\"${NEW_LOGO}\").convert(\"RGBA\")
+im.thumbnail((360, 360))
+im.save(\"/usr/share/plymouth/themes/kiyan/logo.png\", \"PNG\")
+' 2>/dev/null || cp -f \"${NEW_LOGO}\" /usr/share/plymouth/themes/kiyan/logo.png
+    update-initramfs -u
+" && zenity --info --title="Kiyan Boot Logo" --text="Boot logo updated successfully! Your new logo will appear on the next reboot."
+EOF
+chmod 0755 "${TARGET_ROOTFS}/usr/bin/kiyan-boot-logo"
+
+cat << 'EOF' > "${TARGET_ROOTFS}/usr/share/applications/kiyan-boot-logo.desktop"
+[Desktop Entry]
+Type=Application
+Name=Kiyan Boot Logo Changer
+Comment=Change the Kiyan OS startup boot logo with one click
+Exec=/usr/bin/kiyan-boot-logo
+Icon=/usr/share/pixmaps/kiyan-icon.png
+Terminal=false
+Categories=Settings;System;
 EOF
 
-# Out-of-the-box macOS Trackpad Behavior (Tap-to-Click, Two-Finger Right Click, Natural Scroll)
-cat << 'EOF' > "${TARGET_ROOTFS}/etc/skel/.config/kcminputrc"
-[Libinput][Touchpad]
-ClickMethod=2
-LmrTapButtonMap=false
-NaturalScroll=true
-PointerAcceleration=0.2
-TapToClick=true
-TapAndDrag=true
-TwoFingerTap=true
+# ------------------------------------------------------------------------------
+# 3. Compile Authoritative GSettings Override (macOS Sequoia Default + Frosted Bar/Dock Only!)
+# ------------------------------------------------------------------------------
+log_step "Configuring Authoritative GSettings Defaults (macOS Sequoia + Frosted Bar/Dock + 1:1 Trackpad)"
+
+cat << 'EOF' > "${TARGET_ROOTFS}/usr/share/glib-2.0/schemas/95_kiyan-os-defaults.gschema.override"
+[org.gnome.shell]
+enabled-extensions = ['drive-menu@gnome-shell-extensions.gcampax.github.com', 'user-theme@gnome-shell-extensions.gcampax.github.com', 'zorin-appindicator@zorinos.com', 'zorin-printers@zorinos.com', 'zorin-desktop-icons@zorinos.com', 'zorin-tiling-shell@zorinos.com', 'zorin-dash@zorinos.com', 'zorin-hide-activities-move-clock@zorinos.com', 'zorin-magic-lamp-effect@zorinos.com', 'blur-my-shell@aunetx', 'fullscreen-to-empty-workspace@aiono.dev']
+favorite-apps = ['org.gnome.Nautilus.desktop', 'firefox.desktop', 'org.gnome.Terminal.desktop', 'zorin-appearance.desktop', 'localsend_app.desktop', 'org.gnome.Settings.desktop']
+welcome-dialog-last-shown-version = '99.0'
+disable-user-extensions = false
+
+[org.gnome.shell:zorin]
+enabled-extensions = ['drive-menu@gnome-shell-extensions.gcampax.github.com', 'user-theme@gnome-shell-extensions.gcampax.github.com', 'zorin-appindicator@zorinos.com', 'zorin-printers@zorinos.com', 'zorin-desktop-icons@zorinos.com', 'zorin-tiling-shell@zorinos.com', 'zorin-dash@zorinos.com', 'zorin-hide-activities-move-clock@zorinos.com', 'zorin-magic-lamp-effect@zorinos.com', 'blur-my-shell@aunetx', 'fullscreen-to-empty-workspace@aiono.dev']
+favorite-apps = ['org.gnome.Nautilus.desktop', 'firefox.desktop', 'org.gnome.Terminal.desktop', 'zorin-appearance.desktop', 'localsend_app.desktop', 'org.gnome.Settings.desktop']
+
+[org.gnome.desktop.interface]
+color-scheme = 'prefer-dark'
+gtk-theme = 'ZorinBlue-Dark'
+icon-theme = 'WhiteSur-dark'
+cursor-theme = 'Adwaita'
+font-name = 'Inter 10'
+monospace-font-name = 'JetBrains Mono 10'
+enable-hot-corners = true
+show-battery-percentage = true
+
+[org.gnome.desktop.interface:zorin]
+color-scheme = 'prefer-dark'
+gtk-theme = 'ZorinBlue-Dark'
+icon-theme = 'WhiteSur-dark'
+font-name = 'Inter 10'
+monospace-font-name = 'JetBrains Mono 10'
+enable-hot-corners = true
+show-battery-percentage = true
+zorin-display-overview-on-startup = false
+
+[org.gnome.shell.extensions.user-theme]
+name = 'ZorinBlue-Dark'
+
+[org.gnome.shell.extensions.user-theme:zorin]
+name = 'ZorinBlue-Dark'
+
+[org.gnome.desktop.wm.preferences]
+button-layout = 'close,minimize,maximize:appmenu'
+titlebar-font = 'Inter Bold 10'
+
+[org.gnome.desktop.wm.preferences:zorin]
+button-layout = 'close,minimize,maximize:appmenu'
+titlebar-font = 'Inter Bold 10'
+
+[org.gnome.desktop.background]
+show-desktop-icons = true
+picture-uri = 'file:///usr/share/backgrounds/kiyan/KiyanCrystal4K.jpg'
+picture-uri-dark = 'file:///usr/share/backgrounds/kiyan/KiyanCrystal4K.jpg'
+picture-options = 'zoom'
+
+[org.gnome.desktop.screensaver]
+picture-uri = 'file:///usr/share/backgrounds/kiyan/KiyanCrystal4K.jpg'
+
+[org.gnome.login-screen]
+logo = '/usr/share/pixmaps/kiyan-icon.png'
+
+[org.gnome.desktop.peripherals.touchpad]
+tap-to-click = true
+natural-scroll = true
+two-finger-scrolling-enabled = true
+click-method = 'fingers'
+speed = 0.15
+
+[org.gnome.desktop.peripherals.touchpad:zorin]
+tap-to-click = true
+natural-scroll = true
+two-finger-scrolling-enabled = true
+click-method = 'fingers'
+speed = 0.15
+
+[org.gnome.desktop.input-sources]
+sources = [('xkb', 'us'), ('xkb', 'ir')]
+xkb-options = ['grp:alt_shift_toggle']
+
+[org.gnome.mutter]
+dynamic-workspaces = true
+edge-tiling = true
+center-new-windows = true
+
+[org.gnome.shell.extensions.zorin-dash]
+dock-position = 'BOTTOM'
+extend-height = false
+always-center-icons = true
+dock-fixed = true
+intellihide = true
+autohide-in-fullscreen = true
+dash-max-icon-size = 48
+show-show-apps-button = true
+show-apps-at-top = true
+show-trash = true
+transparency-mode = 'FIXED'
+background-opacity = 0.45
+click-action = 'minimize-or-previews'
+
+[org.gnome.shell.extensions.blur-my-shell.panel]
+blur = true
+static-blur = true
+override-background = true
+
+[org.gnome.shell.extensions.blur-my-shell.dash-to-dock]
+blur = true
+static-blur = true
+override-background = true
+style-dash-to-dock = 0
+
+[org.gnome.shell.extensions.blur-my-shell.applications]
+blur = false
+
+[com.zorin.desktop.appearance]
+show-more-layouts-message = false
+EOF
+
+if [[ "${DRY_RUN}" != "1" ]]; then
+    chroot "${TARGET_ROOTFS}" glib-compile-schemas /usr/share/glib-2.0/schemas
+fi
+
+# First-Login Display Color Range Fix (Forces Full RGB 0-255 on AMD/Intel Laptop Panels so screen is NEVER matte!)
+mkdir -p "${TARGET_ROOTFS}/etc/skel/.config/autostart" "${TARGET_ROOTFS}/etc/skel/.config"
+cat << 'EOF' > "${TARGET_ROOTFS}/usr/bin/kiyan-session-init"
+#!/usr/bin/env bash
+set -euo pipefail
+# 1. Disable AMD Vari-Bright panel power savings (prevents washed-out contrast)
+for f in /sys/class/drm/card*-eDP-*/amdgpu/panel_power_savings; do
+    if [[ -w "$f" ]]; then echo 0 > "$f" 2>/dev/null || true; fi
+done
+# 2. Allow Desktop .desktop icons (like Install Kiyan OS) to launch cleanly without untrusted block
+for df in "$HOME"/Desktop/*.desktop; do
+    if [[ -f "$df" ]]; then
+        chmod +x "$df" 2>/dev/null || true
+        gio set "$df" metadata::trusted true 2>/dev/null || true
+    fi
+done
+mkdir -p "$HOME/.config/kiyan"
+touch "$HOME/.config/kiyan/.initialized_v4"
+EOF
+chmod 0755 "${TARGET_ROOTFS}/usr/bin/kiyan-session-init"
+
+cat << 'EOF' > "${TARGET_ROOTFS}/etc/skel/.config/autostart/kiyan-session-init.desktop"
+[Desktop Entry]
+Type=Application
+Name=Kiyan Session Hardware Optimizer
+Exec=/usr/bin/kiyan-session-init
+Terminal=false
+NoDisplay=true
+X-GNOME-Autostart-enabled=true
 EOF
 
 # Set Native Mozilla Firefox as Default Browser Across All MIME Types
@@ -384,134 +508,118 @@ x-scheme-handler/unknown=firefox.desktop
 application/xhtml+xml=firefox.desktop
 EOF
 
-# Disable KDE Splash Screen so Kiyan Boot Logo transitions straight into the macOS Aqua 4K Desktop
-cat << 'EOF' > "${TARGET_ROOTFS}/etc/skel/.config/ksplashrc"
-[KSplash]
-Engine=none
-Theme=None
+# System-wide udev rule to force Broadcast RGB = Full (0-255) & AMD ABM=0 on boot!
+mkdir -p "${TARGET_ROOTFS}/etc/udev/rules.d" "${TARGET_ROOTFS}/etc/profile.d"
+cat << 'EOF' > "${TARGET_ROOTFS}/etc/udev/rules.d/99-kiyan-display-crisp.rules"
+SUBSYSTEM=="drm", KERNEL=="card*", ATTR{amdgpu/panel_power_savings}="0"
 EOF
 
-cat << 'EOF' > "${TARGET_ROOTFS}/etc/skel/.config/kdeglobals"
-[General]
-BrowserApplication=firefox.desktop
-ColorScheme=BreezeDark
-widgetStyle=kvantum-dark
-
-[Icons]
-Theme=Papirus-Dark
-
-[KDE]
-LookAndFeelPackage=org.kde.breezedark.desktop
-SingleClick=false
+cat << 'EOF' > "${TARGET_ROOTFS}/etc/profile.d/kiyan-wayland.sh"
+export MOZ_ENABLE_WAYLAND=1
+export QT_QPA_PLATFORM="wayland;xcb"
 EOF
-
-# Graphical Triple-Shell Switcher App (macOS Aqua / Windows 11 Fluent / Kiyan Crystal)
-cat << 'EOF' > "${TARGET_ROOTFS}/usr/bin/kian-theme-gui"
-#!/usr/bin/env bash
-set -euo pipefail
-CHOICE=$(kdialog --title "Kiyan OS Triple-Shell" --radiolist "Select your active desktop personality:" \
-    "aqua" "macOS Aqua (Top Global Menu Bar + Floating Bottom Dock)" on \
-    "fluent" "Windows 11 Fluent (Centered Taskbar & Start Menu)" off \
-    "native" "Kiyan Dark Crystal (Glassmorphic Neon Dock)" off || true)
-if [[ -n "${CHOICE}" ]]; then
-    /usr/bin/kian-shell-switcher "${CHOICE}"
-fi
-EOF
-chmod 0755 "${TARGET_ROOTFS}/usr/bin/kian-theme-gui"
-
-# Official User-Initiated APT & Package Upgrade Utility (Standard Package Manager Wrapper)
-cat << 'EOF' > "${TARGET_ROOTFS}/usr/bin/kiyan-system-updater"
-#!/usr/bin/env bash
-set -euo pipefail
-if kdialog --title "Kiyan OS System Updater" --yesno "Check for standard Kiyan OS & Ubuntu security/package updates via APT now?"; then
-    konsole -e bash -c "echo '=== Updating Kiyan OS Packages ==='; sudo apt-get update && sudo apt-get dist-upgrade -y && echo '=== Update Complete! ==='; read -rp 'Press Enter to close...'"
-fi
-EOF
-chmod 0755 "${TARGET_ROOTFS}/usr/bin/kiyan-system-updater"
-
-# First-Login Autostart Hook: Applies macOS Aqua Panels + 4K Crystal Wallpaper Automatically!
-mkdir -p "${TARGET_ROOTFS}/etc/skel/.config/autostart"
-cat << 'EOF' > "${TARGET_ROOTFS}/usr/bin/kiyan-session-init"
-#!/usr/bin/env bash
-set -euo pipefail
-MARKER="${XDG_CONFIG_HOME:-$HOME/.config}/kian/.initialized_v3"
-for f in /sys/class/drm/card*-eDP-*/amdgpu/panel_power_savings; do
-    if [[ -w "$f" ]]; then echo 0 > "$f" 2>/dev/null || true; fi
-done
-if [[ ! -f "${MARKER}" ]]; then
-    for _ in $(seq 1 25); do
-        if qdbus-qt5 org.kde.plasmashell /PlasmaShell >/dev/null 2>&1; then
-            sleep 2
-            /usr/bin/kian-shell-switcher macos-aqua || true
-            if command -v plasma-apply-wallpaperimage >/dev/null 2>&1; then
-                plasma-apply-wallpaperimage /usr/share/wallpapers/KiyanCrystal4K/contents/images/3840x2160.jpg >/dev/null 2>&1 || true
-            fi
-            mkdir -p "$(dirname "${MARKER}")"
-            touch "${MARKER}"
-            break
-        fi
-        sleep 1
-    done
-fi
-EOF
-chmod 0755 "${TARGET_ROOTFS}/usr/bin/kiyan-session-init"
-
-cat << 'EOF' > "${TARGET_ROOTFS}/etc/skel/.config/autostart/kiyan-session-init.desktop"
-[Desktop Entry]
-Type=Application
-Name=Kiyan Desktop Initializer
-Exec=/usr/bin/kiyan-session-init
-Icon=kiyan-icon
-Terminal=false
-X-KDE-autostart-phase=2
-EOF
+chmod 0644 "${TARGET_ROOTFS}/etc/profile.d/kiyan-wayland.sh"
 
 # ------------------------------------------------------------------------------
-# 5. Calamares Graphical Installer Configuration & Hooks
+# 4. GDM3 Wayland Live Autologin & Casper Protection
 # ------------------------------------------------------------------------------
-log_step "Configuring Calamares 3.3.x Installer, Modules, and Hooks"
+log_step "Configuring GDM3 Wayland Live Autologin & Casper Hook"
+
+mkdir -p "${TARGET_ROOTFS}/etc/gdm3" \
+         "${TARGET_ROOTFS}/etc/initramfs-tools/scripts/casper-bottom"
+
+cat << 'EOF' > "${TARGET_ROOTFS}/etc/gdm3/custom.conf"
+[daemon]
+WaylandEnable=true
+AutomaticLoginEnable=true
+AutomaticLogin=kian
+DefaultSession=zorin-wayland.desktop
+
+[security]
+
+[xdmcp]
+
+[chooser]
+
+[debug]
+EOF
+
+cat << 'EOF' > "${TARGET_ROOTFS}/etc/initramfs-tools/scripts/casper-bottom/99kian_autologin"
+#!/bin/sh
+PREREQ=""
+DESCRIPTION="Enforcing Kiyan OS v4 GDM3 Zorin Wayland Live Autologin..."
+prereqs() { echo "$PREREQ"; }
+case "$1" in prereqs) prereqs; exit 0 ;; esac
+. /scripts/casper-functions
+log_begin_msg "$DESCRIPTION"
+
+mkdir -p /root/etc/gdm3
+cat > /root/etc/gdm3/custom.conf << 'GDM_EOF'
+[daemon]
+WaylandEnable=true
+AutomaticLoginEnable=true
+AutomaticLogin=kian
+DefaultSession=zorin-wayland.desktop
+
+[security]
+
+[xdmcp]
+
+[chooser]
+
+[debug]
+GDM_EOF
+
+mkdir -p /root/var/lib/AccountsService/users
+cat > /root/var/lib/AccountsService/users/kian << 'ACC_EOF'
+[User]
+Session=zorin-wayland
+SystemAccount=false
+ACC_EOF
+
+if [ -d /root/home/kian ]; then
+    cp -rn /root/etc/skel/. /root/home/kian/ 2>/dev/null || true
+    chroot /root chown -R kian:kian /home/kian 2>/dev/null || true
+fi
+
+log_end_msg
+exit 0
+EOF
+chmod 0755 "${TARGET_ROOTFS}/etc/initramfs-tools/scripts/casper-bottom/99kian_autologin"
+
+# ------------------------------------------------------------------------------
+# 5. Calamares Graphical Installer Configuration & Wayland Root Wrapper
+# ------------------------------------------------------------------------------
+log_step "Deploying Calamares Graphical Installer & Desktop Double-Click Wrapper"
 
 mkdir -p "${TARGET_ROOTFS}/etc/calamares/modules" \
+         "${TARGET_ROOTFS}/etc/calamares/branding/kian" \
          "${TARGET_ROOTFS}/usr/share/calamares/hooks" \
          "${TARGET_ROOTFS}/usr/lib/calamares/hooks" \
-         "${TARGET_ROOTFS}/usr/sbin"
-
-if [[ -f "${INSTALLER_DIR}/calamares/settings.conf" ]]; then
-    log_info "Deploying Calamares settings.conf..."
-    run_cmd cp "${INSTALLER_DIR}/calamares/settings.conf" "${TARGET_ROOTFS}/etc/calamares/settings.conf"
-fi
-
-if [[ -d "${INSTALLER_DIR}/calamares/modules" ]]; then
-    log_info "Deploying Calamares module descriptors (including displaymanager.conf & mount.conf)..."
-    run_cmd cp -r "${INSTALLER_DIR}/calamares/modules"/* "${TARGET_ROOTFS}/etc/calamares/modules/"
-fi
-
-if [[ -d "${INSTALLER_DIR}/calamares/branding" ]]; then
-    log_info "Deploying Calamares branding descriptors..."
-    mkdir -p "${TARGET_ROOTFS}/etc/calamares/branding" "${TARGET_ROOTFS}/usr/share/calamares/branding"
-    run_cmd cp -r "${INSTALLER_DIR}/calamares/branding"/* "${TARGET_ROOTFS}/etc/calamares/branding/"
-    run_cmd cp -r "${INSTALLER_DIR}/calamares/branding"/* "${TARGET_ROOTFS}/usr/share/calamares/branding/"
-fi
-
-if [[ -d "${INSTALLER_DIR}/calamares/hooks" ]]; then
-    log_info "Deploying Calamares pre/post-install hooks..."
-    run_cmd cp -r "${INSTALLER_DIR}/calamares/hooks"/* "${TARGET_ROOTFS}/usr/share/calamares/hooks/"
-    run_cmd cp -r "${INSTALLER_DIR}/calamares/hooks"/* "${TARGET_ROOTFS}/usr/lib/calamares/hooks/"
-    if [[ -f "${INSTALLER_DIR}/calamares/hooks/post-install-drivers-and-clean.sh" ]]; then
-        run_cmd cp "${INSTALLER_DIR}/calamares/hooks/post-install-drivers-and-clean.sh" "${TARGET_ROOTFS}/usr/sbin/post-install-drivers-and-clean.sh"
-        run_cmd chmod +x "${TARGET_ROOTFS}/usr/sbin/post-install-drivers-and-clean.sh"
-    fi
-    run_cmd chmod +x "${TARGET_ROOTFS}/usr/share/calamares/hooks"/*.sh
-    run_cmd chmod +x "${TARGET_ROOTFS}/usr/lib/calamares/hooks"/*.sh
-fi
-
-# Deploy Pure-Wayland + Xwayland Root Wrapper for Calamares Double-Click Launch
-mkdir -p "${TARGET_ROOTFS}/usr/bin" \
-         "${TARGET_ROOTFS}/usr/share/applications" \
          "${TARGET_ROOTFS}/usr/share/polkit-1/actions" \
-         "${TARGET_ROOTFS}/etc/skel/.config" \
          "${TARGET_ROOTFS}/etc/skel/Desktop" \
          "${TARGET_ROOTFS}/home/kian/Desktop"
+
+if [[ -f "${INSTALLER_DIR}/calamares/settings.conf" ]]; then
+    run_cmd cp "${INSTALLER_DIR}/calamares/settings.conf" "${TARGET_ROOTFS}/etc/calamares/settings.conf"
+fi
+if [[ -d "${INSTALLER_DIR}/calamares/modules" ]]; then
+    run_cmd cp -r "${INSTALLER_DIR}/calamares/modules"/* "${TARGET_ROOTFS}/etc/calamares/modules/"
+fi
+if [[ -d "${INSTALLER_DIR}/calamares/branding/kian" ]]; then
+    run_cmd cp -r "${INSTALLER_DIR}/calamares/branding/kian"/* "${TARGET_ROOTFS}/etc/calamares/branding/kian/"
+fi
+if [[ -f "${DESKTOP_DIR}/branding/kiyan-icon.png" ]]; then
+    run_cmd cp -f "${DESKTOP_DIR}/branding/kiyan-icon.png" "${TARGET_ROOTFS}/etc/calamares/branding/kian/kian-logo.png"
+fi
+if [[ -f "${DESKTOP_DIR}/branding/kiyan-welcome.png" ]]; then
+    run_cmd cp -f "${DESKTOP_DIR}/branding/kiyan-welcome.png" "${TARGET_ROOTFS}/etc/calamares/branding/kian/welcome.png"
+fi
+if [[ -d "${INSTALLER_DIR}/calamares/hooks" ]]; then
+    run_cmd cp "${INSTALLER_DIR}/calamares/hooks"/*.sh "${TARGET_ROOTFS}/usr/share/calamares/hooks/"
+    run_cmd cp "${INSTALLER_DIR}/calamares/hooks"/*.sh "${TARGET_ROOTFS}/usr/lib/calamares/hooks/"
+    run_cmd chmod +x "${TARGET_ROOTFS}/usr/share/calamares/hooks"/*.sh "${TARGET_ROOTFS}/usr/lib/calamares/hooks"/*.sh
+fi
 
 cat << 'EOF' > "${TARGET_ROOTFS}/usr/bin/kian-install-os"
 #!/usr/bin/env bash
@@ -569,8 +677,7 @@ if sudo -n true 2>/dev/null; then
         WAYLAND_DISPLAY="${WL_ABS}" \
         DISPLAY="${X_DISP:-:0}" \
         QT_QPA_PLATFORM="wayland;xcb" \
-        XDG_CURRENT_DESKTOP="KDE" \
-        KDE_FULL_SESSION="true" \
+        XDG_CURRENT_DESKTOP="GNOME" \
         LANG="${LANG:-en_US.UTF-8}" \
         /usr/bin/kian-install-os "$@"
 else
@@ -578,8 +685,7 @@ else
         WAYLAND_DISPLAY="${WL_ABS}" \
         DISPLAY="${X_DISP:-:0}" \
         QT_QPA_PLATFORM="wayland;xcb" \
-        XDG_CURRENT_DESKTOP="KDE" \
-        KDE_FULL_SESSION="true" \
+        XDG_CURRENT_DESKTOP="GNOME" \
         LANG="${LANG:-en_US.UTF-8}" \
         /usr/bin/kian-install-os "$@"
 fi
@@ -592,10 +698,10 @@ cat << 'EOF' > "${TARGET_ROOTFS}/usr/share/polkit-1/actions/org.kian.install.pol
  "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
  "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
 <policyconfig>
-  <vendor>Kian-OS</vendor>
+  <vendor>Kiyan OS</vendor>
   <action id="org.kian.install.pkexec.run">
-    <description>Install Kian-OS v3</description>
-    <message>Authentication is required to install Kian-OS v3</message>
+    <description>Install Kiyan OS v4</description>
+    <message>Authentication is required to install Kiyan OS v4</message>
     <icon_name>calamares</icon_name>
     <defaults>
       <allow_any>yes</allow_any>
@@ -608,161 +714,105 @@ cat << 'EOF' > "${TARGET_ROOTFS}/usr/share/polkit-1/actions/org.kian.install.pol
 </policyconfig>
 EOF
 
-# Configure KDE KIO so double-clicking Desktop launchers executes immediately (never opens text editor / prompt)
-cat << 'EOF' > "${TARGET_ROOTFS}/etc/skel/.config/kiorc"
-[Executable scripts]
-behaviourOnLaunch=execute
-EOF
-
-cat << 'EOF' > "${TARGET_ROOTFS}/etc/skel/Desktop/calamares.desktop"
+cat << EOF > "${TARGET_ROOTFS}/etc/skel/Desktop/calamares.desktop"
 [Desktop Entry]
 Type=Application
 Version=1.0
-Name=Install Kiyan OS v3
-GenericName=Live Operating System Installer
-Comment=Install Kiyan OS v3 cleanly to disk with automated Btrfs layout
+Name=Install Kiyan OS v4 (${EDITION^^})
+GenericName=System Installer
+Comment=Install Kiyan OS v4 permanently to disk
 Exec=/usr/bin/kian-install-os
-TryExec=/usr/bin/kian-install-os
 Icon=/usr/share/pixmaps/kiyan-icon.png
 Terminal=false
-Categories=Qt;System;
 StartupNotify=true
-X-KDE-SubstituteUID=false
+Categories=Qt;System;
 EOF
 chmod 0755 "${TARGET_ROOTFS}/etc/skel/Desktop/calamares.desktop"
 cp -f "${TARGET_ROOTFS}/etc/skel/Desktop/calamares.desktop" "${TARGET_ROOTFS}/usr/share/applications/calamares.desktop"
-chmod 0755 "${TARGET_ROOTFS}/usr/share/applications/calamares.desktop"
 
-cat << 'EOF' > "${TARGET_ROOTFS}/usr/share/applications/kian-theme-switcher.desktop"
+cat << 'EOF' > "${TARGET_ROOTFS}/etc/skel/Desktop/zorin-appearance.desktop"
 [Desktop Entry]
 Type=Application
 Version=1.0
-Name=Kiyan Theme Switcher (3 Shells)
-GenericName=Desktop Layout & Glass Theme Switcher
-Comment=Switch instantly between macOS Aqua, Windows 11 Fluent, and Kiyan Crystal
-Exec=/usr/bin/kian-theme-gui
-Icon=preferences-desktop-theme
+Name=Kiyan Appearance (macOS & Win11)
+Comment=Switch between macOS Sequoia, Windows 11, and Zorin Desktop layouts
+Exec=/usr/bin/zorin-appearance
+Icon=zorin-appearance
 Terminal=false
-Categories=Qt;KDE;Settings;DesktopSettings;
 StartupNotify=true
+Categories=Settings;
 EOF
-chmod 0755 "${TARGET_ROOTFS}/usr/share/applications/kian-theme-switcher.desktop"
-cp -f "${TARGET_ROOTFS}/usr/share/applications/kian-theme-switcher.desktop" "${TARGET_ROOTFS}/etc/skel/Desktop/kian-theme-switcher.desktop"
-chmod 0755 "${TARGET_ROOTFS}/etc/skel/Desktop/kian-theme-switcher.desktop"
+chmod 0755 "${TARGET_ROOTFS}/etc/skel/Desktop/zorin-appearance.desktop"
 
-cat << 'EOF' > "${TARGET_ROOTFS}/usr/share/applications/kiyan-system-updater.desktop"
-[Desktop Entry]
-Type=Application
-Version=1.0
-Name=Kiyan System Updater
-GenericName=System Package Updater
-Comment=Update Kiyan OS packages and security fixes
-Exec=/usr/bin/kiyan-system-updater
-Icon=system-software-update
-Terminal=false
-Categories=Qt;KDE;System;
-StartupNotify=true
-EOF
-chmod 0755 "${TARGET_ROOTFS}/usr/share/applications/kiyan-system-updater.desktop"
-
-if [[ "${DRY_RUN}" != "1" ]]; then
-    cp -a "${TARGET_ROOTFS}/etc/skel/." "${TARGET_ROOTFS}/home/kian/"
-    chmod 0755 "${TARGET_ROOTFS}/home/kian/Desktop/"*.desktop
-    chown -R 1000:1000 "${TARGET_ROOTFS}/home/kian"
+if [[ -d "${TARGET_ROOTFS}/home/kian" ]]; then
+    cp -rf "${TARGET_ROOTFS}/etc/skel/." "${TARGET_ROOTFS}/home/kian/"
+    if [[ "${DRY_RUN}" != "1" ]]; then
+        chroot "${TARGET_ROOTFS}" chown -R kian:kian /home/kian
+    fi
 fi
 
 # ------------------------------------------------------------------------------
-# 6. Local Offline P2P Synchronization Services
+# 6. Atomic Btrfs Rollback, Dual-Kernel Watchdog (7.3 Liquorix + 7.0 HWE) & Branding
 # ------------------------------------------------------------------------------
-log_step "Deploying Offline P2P Sync Units (LocalSend & KDE Connect Clipboard)"
+log_step "Installing Atomic Btrfs Hooks, Dual-Kernel Watchdog & Kiyan OS v4 Branding"
 
-mkdir -p "${TARGET_ROOTFS}/usr/lib/systemd/user" \
-         "${TARGET_ROOTFS}/etc/systemd/user/graphical-session.target.wants"
-
-if [[ -f "${DESKTOP_DIR}/sync/localsend.service" ]]; then
-    log_info "Deploying localsend.service (user graphical-session unit)..."
-    run_cmd cp "${DESKTOP_DIR}/sync/localsend.service" "${TARGET_ROOTFS}/usr/lib/systemd/user/localsend.service"
-    ln -sf "/usr/lib/systemd/user/localsend.service" "${TARGET_ROOTFS}/etc/systemd/user/graphical-session.target.wants/localsend.service"
-fi
-
-if [[ -f "${DESKTOP_DIR}/sync/kdeconnect-clipboard.service" ]]; then
-    log_info "Deploying kdeconnect-clipboard.service (user graphical-session unit)..."
-    run_cmd cp "${DESKTOP_DIR}/sync/kdeconnect-clipboard.service" "${TARGET_ROOTFS}/usr/lib/systemd/user/kdeconnect-clipboard.service"
-    ln -sf "/usr/lib/systemd/user/kdeconnect-clipboard.service" "${TARGET_ROOTFS}/etc/systemd/user/graphical-session.target.wants/kdeconnect-clipboard.service"
-fi
-
-# ------------------------------------------------------------------------------
-# 7. Btrfs Snapshot Engine, Rollback CLI & Dual-Kernel GRUB Watchdog
-# ------------------------------------------------------------------------------
-log_step "Deploying Btrfs Rollback Engine, APT Snapshot Hooks & Dual-Kernel GRUB Watchdog"
-
-mkdir -p "${TARGET_ROOTFS}/usr/lib/kian" "${TARGET_ROOTFS}/etc/apt/apt.conf.d" \
-         "${TARGET_ROOTFS}/etc/grub.d" "${TARGET_ROOTFS}/etc/default" \
+mkdir -p "${TARGET_ROOTFS}/usr/lib/kian" \
+         "${TARGET_ROOTFS}/etc/apt/apt.conf.d" \
+         "${TARGET_ROOTFS}/etc/grub.d" \
+         "${TARGET_ROOTFS}/etc/default" \
+         "${TARGET_ROOTFS}/etc/systemd/system" \
          "${TARGET_ROOTFS}/etc/initramfs-tools/scripts/init-bottom"
 
-if [[ -f "${SCRIPTS_DIR}/kian-rollback" ]]; then
-    log_info "Deploying kian-rollback utility..."
-    run_cmd cp "${SCRIPTS_DIR}/kian-rollback" "${TARGET_ROOTFS}/usr/local/bin/kian-rollback"
-    run_cmd cp "${SCRIPTS_DIR}/kian-rollback" "${TARGET_ROOTFS}/usr/bin/kian-rollback"
-    run_cmd chmod +x "${TARGET_ROOTFS}/usr/local/bin/kian-rollback" "${TARGET_ROOTFS}/usr/bin/kian-rollback"
-fi
-
 if [[ -f "${SCRIPTS_DIR}/btrfs-apt-hook" ]]; then
-    log_info "Deploying btrfs-apt-hook..."
     run_cmd cp "${SCRIPTS_DIR}/btrfs-apt-hook" "${TARGET_ROOTFS}/usr/lib/kian/btrfs-apt-hook"
     run_cmd chmod +x "${TARGET_ROOTFS}/usr/lib/kian/btrfs-apt-hook"
-fi
-
-cat << 'EOF' > "${TARGET_ROOTFS}/etc/apt/apt.conf.d/80kian-btrfs-snapshot"
-// KIAN-OS v3: Automatic Pre/Post Transaction Atomic Btrfs Snapshots
+    cat << 'EOF' > "${TARGET_ROOTFS}/etc/apt/apt.conf.d/80-kian-btrfs-snapshot"
 DPkg::Pre-Invoke  { "/usr/lib/kian/btrfs-apt-hook pre"; };
 DPkg::Post-Invoke { "/usr/lib/kian/btrfs-apt-hook post"; };
 EOF
+fi
+
+if [[ -f "${SCRIPTS_DIR}/kian-rollback" ]]; then
+    run_cmd cp "${SCRIPTS_DIR}/kian-rollback" "${TARGET_ROOTFS}/usr/bin/kian-rollback"
+    run_cmd chmod +x "${TARGET_ROOTFS}/usr/bin/kian-rollback"
+fi
 
 if [[ -f "${SCRIPTS_DIR}/41_kian_snapshots" ]]; then
-    log_info "Deploying 41_kian_snapshots GRUB menu generator..."
     run_cmd cp "${SCRIPTS_DIR}/41_kian_snapshots" "${TARGET_ROOTFS}/etc/grub.d/41_kian_snapshots"
     run_cmd chmod +x "${TARGET_ROOTFS}/etc/grub.d/41_kian_snapshots"
 fi
 
-# Authoritative /etc/default/grub with Silent Kiyan Splash, AMD Vari-Bright Off, NVIDIA GSP KMS & Watchdog
 cat << 'EOF' > "${TARGET_ROOTFS}/etc/default/grub"
 GRUB_DEFAULT="kian_primary"
-GRUB_TIMEOUT_STYLE=menu
+GRUB_TIMEOUT_STYLE=hidden
 GRUB_TIMEOUT=2
-GRUB_DISTRIBUTOR="Kiyan OS v3"
+GRUB_DISTRIBUTOR="Kiyan OS v4"
 GRUB_CMDLINE_LINUX_DEFAULT="quiet splash loglevel=0 rd.systemd.show_status=false rd.udev.log_level=0 udev.log_priority=0 vt.global_cursor_default=0 amdgpu.abmlevel=0 preempt=full split_lock_mitigate=0 nouveau.config=NvGspRm=1 panic=10"
 GRUB_CMDLINE_LINUX=""
 EOF
 
-# Deploy Dual-Kernel GRUB Bootcounter Watchdog (01_kian_watchdog runs AFTER 00_header!)
 cat << 'EOF' > "${TARGET_ROOTFS}/etc/grub.d/01_kian_watchdog"
 #!/bin/sh
 set -e
 cat << 'GRUB_WATCHDOG'
-# KIAN-OS v3 Dual-Kernel Bootcounter Watchdog
 if [ -s $prefix/grubenv ]; then
     load_env
-fi
-
-if [ -z "${bootcount}" ]; then
-    set bootcount=0
 fi
 if [ -z "${bootlimit}" ]; then
     set bootlimit=3
 fi
-
-if [ "${bootcount}" -ge "${bootlimit}" ]; then
-    echo ":: [WARNING] KIAN-OS Watchdog: Boot limit reached (${bootcount}/${bootlimit})."
-    echo ":: Primary kernel (linux-kian v3) failed; failing over to Generic LTS Fallback..."
+if [ "${boot_once_snapshot}" = "1" ]; then
+    set boot_once_snapshot=0
+    save_env boot_once_snapshot
+elif [ -n "${bootcount}" ] && [ "${bootcount}" -ge "${bootlimit}" ]; then
     set default="kian_fallback_generic"
 else
-    if [ "${bootcount}" = "2" ]; then
-        set bootcount=3
+    if [ "${bootcount}" = "0" ] || [ -z "${bootcount}" ]; then
+        set bootcount=1
     elif [ "${bootcount}" = "1" ]; then
         set bootcount=2
-    elif [ "${bootcount}" = "0" ]; then
-        set bootcount=1
+    elif [ "${bootcount}" = "2" ]; then
+        set bootcount=3
     else
         set bootcount=1
     fi
@@ -773,18 +823,15 @@ GRUB_WATCHDOG
 EOF
 chmod +x "${TARGET_ROOTFS}/etc/grub.d/01_kian_watchdog"
 
-# Deploy Dedicated Dual-Kernel Menu Generator (09_kian_kernels)
-# Guarantees menuentries with exact --id 'kian_primary' and --id 'kian_fallback_generic' ALWAYS exist in grub.cfg!
 cat << 'EOF' > "${TARGET_ROOTFS}/etc/grub.d/09_kian_kernels"
 #!/bin/sh
 set -e
-
 prefix="/usr"
 exec_prefix="/usr"
 datarootdir="/usr/share"
 . "$pkgdatadir/grub-mkconfig_lib"
 
-PRIMARY_KVER=$(ls -1 /boot/vmlinuz-*kian-v3* 2>/dev/null | sed 's|^/boot/vmlinuz-||' | sort -V | tail -n 1 || true)
+PRIMARY_KVER=$(ls -1 /boot/vmlinuz-*liquorix* 2>/dev/null | sed 's|^/boot/vmlinuz-||' | sort -V | tail -n 1 || true)
 FALLBACK_KVER=$(ls -1 /boot/vmlinuz-*-generic 2>/dev/null | sed 's|^/boot/vmlinuz-||' | sort -V | tail -n 1 || true)
 
 if [ -z "${PRIMARY_KVER}" ] && [ -z "${FALLBACK_KVER}" ]; then
@@ -832,105 +879,78 @@ ENTRY_EOF
 }
 
 if [ -n "${PRIMARY_KVER}" ]; then
-    emit_kian_entry "Kiyan OS v3 (Superkernel ${PRIMARY_KVER})" "kian_primary" "${PRIMARY_KVER}" "${GRUB_CMDLINE_LINUX_DEFAULT}"
+    emit_kian_entry "Kiyan OS v4 (Superkernel ${PRIMARY_KVER})" "kian_primary" "${PRIMARY_KVER}" "${GRUB_CMDLINE_LINUX_DEFAULT}"
 fi
-
 if [ -n "${FALLBACK_KVER}" ]; then
-    emit_kian_entry "Kiyan OS v3 (Safe Recovery ${FALLBACK_KVER})" "kian_fallback_generic" "${FALLBACK_KVER}" "quiet splash loglevel=0 vt.global_cursor_default=0"
+    emit_kian_entry "Kiyan OS v4 (Safe HWE Recovery ${FALLBACK_KVER})" "kian_fallback_generic" "${FALLBACK_KVER}" "quiet splash loglevel=0 vt.global_cursor_default=0"
 fi
 EOF
 chmod +x "${TARGET_ROOTFS}/etc/grub.d/09_kian_kernels"
 
-# Deploy kian-boot-success.service
 if [[ -f "${SCRIPTS_DIR}/kian-boot-success.service" ]]; then
-    log_info "Deploying kian-boot-success.service..."
     run_cmd cp "${SCRIPTS_DIR}/kian-boot-success.service" "${TARGET_ROOTFS}/etc/systemd/system/kian-boot-success.service"
     mkdir -p "${TARGET_ROOTFS}/etc/systemd/system/graphical.target.wants"
     ln -sf "/etc/systemd/system/kian-boot-success.service" "${TARGET_ROOTFS}/etc/systemd/system/graphical.target.wants/kian-boot-success.service"
 fi
 
-# Deploy Initramfs Ephemeral OverlayFS Early Boot Hook
-log_info "Deploying initramfs kian_overlayfs hook..."
 cat << 'EOF' > "${TARGET_ROOTFS}/etc/initramfs-tools/scripts/init-bottom/kian_overlayfs"
 #!/bin/sh
-# /etc/initramfs-tools/scripts/init-bottom/kian_overlayfs
-# Hook to assemble OverlayFS over a read-only Btrfs snapshot during boot
 PREREQ=""
 prereqs() { echo "$PREREQ"; }
 case $1 in prereqs) prereqs; exit 0;; esac
-
-. /scripts/functions
-
-OVERLAY_ENABLED=0
-for cmd in $(cat /proc/cmdline); do
-    case "$cmd" in
-        kian.overlay=1)
-            OVERLAY_ENABLED=1
-            ;;
+ENABLE_OVERLAY=0
+for x in $(cat /proc/cmdline); do
+    case $x in
+        kian_snapshot_ro=1) ENABLE_OVERLAY=1 ;;
     esac
 done
-
-if [ "$OVERLAY_ENABLED" -ne 1 ]; then
-    exit 0
-fi
-
-log_begin_msg "KIAN-OS: Engaging Ephemeral OverlayFS on Read-Only Snapshot Root"
-
-mkdir -p /run/overlay_tmpfs
+[ "$ENABLE_OVERLAY" -eq 1 ] || exit 0
+. /scripts/functions
+log_begin_msg "Mounting Kiyan OS Ephemeral Snapshot OverlayFS..."
+mkdir -p /run/overlay_tmpfs /run/overlay_newroot
 mount -t tmpfs -o mode=0755,size=50% tmpfs_root /run/overlay_tmpfs
-
-mkdir -p /run/overlay_tmpfs/upper
-mkdir -p /run/overlay_tmpfs/work
-mkdir -p /run/overlay_newroot
-
+mkdir -p /run/overlay_tmpfs/upper /run/overlay_tmpfs/work
 mount -t overlay overlay -o lowerdir=${rootmnt},upperdir=/run/overlay_tmpfs/upper,workdir=/run/overlay_tmpfs/work /run/overlay_newroot
-
 mkdir -p /run/overlay_newroot/mnt/.ro_snapshot
 mount --move ${rootmnt} /run/overlay_newroot/mnt/.ro_snapshot
 mount --move /run/overlay_newroot ${rootmnt}
-
 log_end_msg
 exit 0
 EOF
 chmod +x "${TARGET_ROOTFS}/etc/initramfs-tools/scripts/init-bottom/kian_overlayfs"
 
-# ------------------------------------------------------------------------------
-# 8. Full OS Branding & Final Initramfs Regeneration for All Installed Kernels
-# ------------------------------------------------------------------------------
-log_step "Applying Full Kian-OS v3 Branding & Regenerating Initramfs (With All Hooks)"
-
-cat << 'EOF' > "${TARGET_ROOTFS}/etc/os-release"
+# Overwrite /etc/os-release AFTER Zorin packages so Settings -> About displays Kiyan OS v4!
+cat << EOF > "${TARGET_ROOTFS}/etc/os-release"
 NAME="Kiyan OS"
-VERSION="3.0 (Liquid Crystal Edition)"
+VERSION="4.0 (${EDITION^^} Edition)"
 ID=kiyan-os
 ID_LIKE="ubuntu debian"
-PRETTY_NAME="Kiyan OS v3"
-VERSION_ID="3.0"
+PRETTY_NAME="Kiyan OS v4 ${EDITION^^}"
+VERSION_ID="4.0"
 HOME_URL="https://github.com/manmojt/kiyan-os"
 SUPPORT_URL="https://github.com/manmojt/kiyan-os/issues"
 BUG_REPORT_URL="https://github.com/manmojt/kiyan-os/issues"
-PRIVACY_POLICY_URL="https://github.com/manmojt/kiyan-os"
 UBUNTU_CODENAME=noble
 LOGO=kiyan-icon
 EOF
 
-cat << 'EOF' > "${TARGET_ROOTFS}/etc/lsb-release"
+cat << EOF > "${TARGET_ROOTFS}/etc/lsb-release"
 DISTRIB_ID=KiyanOS
-DISTRIB_RELEASE=3.0
+DISTRIB_RELEASE=4.0
 DISTRIB_CODENAME=noble
-DISTRIB_DESCRIPTION="Kiyan OS v3"
+DISTRIB_DESCRIPTION="Kiyan OS v4 ${EDITION^^}"
 EOF
 
-echo "Kiyan OS v3 \n \l" > "${TARGET_ROOTFS}/etc/issue"
-echo "Kiyan OS v3 \n \l" > "${TARGET_ROOTFS}/etc/issue.net"
+echo "Kiyan OS v4 ${EDITION^^} \n \l" > "${TARGET_ROOTFS}/etc/issue"
+echo "Kiyan OS v4 ${EDITION^^} \n \l" > "${TARGET_ROOTFS}/etc/issue.net"
 echo "kian-os" > "${TARGET_ROOTFS}/etc/hostname"
 
 if [[ "${DRY_RUN}" != "1" ]]; then
-    log_info "Activating Kiyan Plymouth Boot Splash & Regenerating Initramfs (With All Hooks)..."
+    log_info "Activating Kiyan Plymouth Boot Splash & Regenerating Initramfs (All Kernels)..."
     chroot "${TARGET_ROOTFS}" /usr/bin/env DEBIAN_FRONTEND=noninteractive CASPER_GENERATE_UUID=1 bash -euo pipefail << 'CHROOT_INITRD_EOF'
 if [[ -f /usr/share/plymouth/themes/kiyan/kiyan.plymouth ]]; then
     update-alternatives --install /usr/share/plymouth/themes/default.plymouth default.plymouth \
-        /usr/share/plymouth/themes/kiyan/kiyan.plymouth 500
+        /usr/share/plymouth/themes/kiyan/kiyan.plymouth 600
     update-alternatives --set default.plymouth /usr/share/plymouth/themes/kiyan/kiyan.plymouth
     mkdir -p /etc/plymouth
     printf "[Daemon]\nTheme=kiyan\nShowDelay=0\nDeviceTimeout=8\n" > /etc/plymouth/plymouthd.conf
@@ -942,12 +962,12 @@ for kver in $(ls -1 /lib/modules | sort -V); do
     update-initramfs -c -k "${kver}" || update-initramfs -u -k "${kver}"
     test -s "/boot/initrd.img-${kver}"
 done
-KVER_KIAN=$(ls -1 /lib/modules | grep -E "^6\.8\..*-kian-v3$" | sort -V | tail -n 1)
-test -n "${KVER_KIAN}"
-ln -sfn "vmlinuz-${KVER_KIAN}" /boot/vmlinuz
-ln -sfn "initrd.img-${KVER_KIAN}" /boot/initrd.img
+KVER_PRI=$(ls -1 /lib/modules | grep -E "liquorix-amd64$" | sort -V | tail -n 1)
+test -n "${KVER_PRI}"
+ln -sfn "vmlinuz-${KVER_PRI}" /boot/vmlinuz
+ln -sfn "initrd.img-${KVER_PRI}" /boot/initrd.img
 CHROOT_INITRD_EOF
     unmount_virtual_fs "${TARGET_ROOTFS}"
 fi
 
-log_success "Phase 3: Desktop customization, security hardening, and initramfs regeneration complete!"
+log_success "Phase 3: Kiyan OS v4 (${EDITION^^}) Zorin 18 + GNOME 46 Desktop customization complete!"

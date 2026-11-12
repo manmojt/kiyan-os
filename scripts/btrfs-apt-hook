@@ -69,7 +69,7 @@ case "${1:-}" in
         if [[ "${KIAN_MOCK_BTRFS:-0}" == "1" ]]; then
             mkdir -p "${TARGET_PATH}"
         else
-            btrfs subvolume snapshot -r / "${TARGET_PATH}" >/dev/null
+            btrfs subvolume snapshot / "${TARGET_PATH}" >/dev/null
         fi
 
         APT_CMD=$(get_invoking_cmd)
@@ -85,6 +85,9 @@ case "${1:-}" in
   "command": "${APT_CMD}"
 }
 EOF
+        if [[ "${KIAN_MOCK_BTRFS:-0}" != "1" ]]; then
+            btrfs property set -ts "${TARGET_PATH}" ro true 2>/dev/null || true
+        fi
 
         # Save ID to state file for post-invoke pairing
         mkdir -p "$(dirname "${STATE_FILE}")"
@@ -115,7 +118,7 @@ EOF
         if [[ "${KIAN_MOCK_BTRFS:-0}" == "1" ]]; then
             mkdir -p "${TARGET_PATH}"
         else
-            btrfs subvolume snapshot -r / "${TARGET_PATH}" >/dev/null
+            btrfs subvolume snapshot / "${TARGET_PATH}" >/dev/null
         fi
 
         cat <<EOF > "${TARGET_PATH}/.kian_snapshot_meta.json"
@@ -129,6 +132,9 @@ EOF
   "paired_pre": "snap_${CURRENT_ID}_pre"
 }
 EOF
+        if [[ "${KIAN_MOCK_BTRFS:-0}" != "1" ]]; then
+            btrfs property set -ts "${TARGET_PATH}" ro true 2>/dev/null || true
+        fi
 
         # Dynamically trigger GRUB snapshot list update if hook is present, or fallback to update-grub
         if [[ -x /usr/lib/kian/update-grub-snapshots ]]; then

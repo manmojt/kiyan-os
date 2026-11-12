@@ -93,6 +93,11 @@ while [[ $# -gt 0 ]]; do
             CUSTOM_MIRROR="$2"
             shift 2
             ;;
+        --edition)
+            export KIYAN_EDITION="$2"
+            export ISO_NAME="kiyan-os-v4-${KIYAN_EDITION}-noble-amd64.iso"
+            shift 2
+            ;;
         *)
             log_error "Unknown option: $1"
             show_usage 1
@@ -172,7 +177,7 @@ fi
 # ------------------------------------------------------------------------------
 if [[ $SKIP_DESKTOP -eq 0 ]]; then
     P3_START=$(date +%s)
-    P3_ARGS=()
+    P3_ARGS=(--edition "${KIYAN_EDITION:-core}")
     if [[ "${DRY_RUN}" == "1" ]]; then P3_ARGS+=(--dry-run); fi
 
     "${SCRIPT_DIR}/03_customize_desktop.sh" "${P3_ARGS[@]}"

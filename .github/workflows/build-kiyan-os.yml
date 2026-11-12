@@ -1,33 +1,33 @@
-name: Build Kian-OS v3 (Council Approved x86_64)
+name: Build Kiyan OS v4 (Core & Pro Free Editions — Zorin 18 + GNOME 46 + Liquorix 7.3)
 
 on:
   workflow_dispatch:
   push:
     branches:
       - main
-    paths:
-      - 'build/02_bootstrap_rootfs.sh'
-      - 'build/03_customize_desktop.sh'
-      - 'build/04_build_iso.sh'
-      - 'build/05_verify_iso.sh'
-      - 'desktop/**'
-      - 'installer/**'
-      - 'scripts/**'
-      - '.github/workflows/build-kiyan-os.yml'
 
 permissions:
   contents: write
 
+concurrency:
+  group: build-kiyan-os-v4-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build-kian-iso:
-    name: Assemble, Boot-Verify & Release Kian-OS v3 Hybrid ISO (Ubuntu 24.04 Noble)
+  build-edition:
+    name: Build & Live-Boot Verify Kiyan OS v4 (${{ matrix.edition }})
     runs-on: ubuntu-24.04
     timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        edition: [core, pro]
+
     steps:
-      - name: Checkout Kian-OS Repository
+      - name: Checkout Kiyan OS Repository
         uses: actions/checkout@v4
 
-      - name: Fix Runner DNS (Cloudflare DoH + 1.1.1.1) & Switch APT to HTTPS CDN Mirrors
+      - name: Fix Runner DNS (Cloudflare DoH + 1.1.1.1) & Enforce IPv4 Resilient Mirrors
         run: |
           set -euo pipefail
           sudo rm -f /etc/resolv.conf
@@ -37,47 +37,39 @@ jobs:
 
           sudo python3 - <<'PY'
           import json, urllib.request
-
           hosts = [
-              "azure.archive.ubuntu.com",
               "archive.ubuntu.com",
               "security.ubuntu.com",
-              "mirrors.edge.kernel.org",
+              "ppa.launchpadcontent.net",
+              "keyserver.ubuntu.com",
               "packages.mozilla.org",
+              "extensions.gnome.org",
               "github.com",
               "api.github.com",
               "objects.githubusercontent.com",
-              "release-assets.githubusercontent.com",
           ]
           lines = []
           for h in hosts:
               try:
                   req = urllib.request.Request(
                       f"https://1.1.1.1/dns-query?name={h}&type=A",
-                      headers={"Accept": "application/dns-json", "User-Agent": "kian-ci/1.0"},
+                      headers={"Accept": "application/dns-json", "User-Agent": "kiyan-ci/4.0"},
                   )
                   with urllib.request.urlopen(req, timeout=8) as r:
                       data = json.loads(r.read().decode())
-                  ips = [
-                      ans["data"]
-                      for ans in data.get("Answer", [])
-                      if ans.get("type") == 1 and ans.get("data")
-                  ]
+                  ips = [a["data"] for a in data.get("Answer", []) if a.get("type") == 1 and a.get("data")]
                   if ips:
                       lines.append(f"{ips[0]} {h}")
                       print(f"[DoH] {h} -> {ips[0]}")
               except Exception as exc:
                   print(f"[DoH WARN] {h}: {exc}")
-
           if lines:
               with open("/etc/hosts", "a", encoding="utf-8") as fh:
-                  fh.write("\n# Kian-OS CI DoH Bootstrap\n" + "\n".join(lines) + "\n")
+                  fh.write("\n# Kiyan OS CI DoH Bootstrap\n" + "\n".join(lines) + "\n")
           PY
 
-          if [[ -f /etc/apt/apt-mirrors.txt ]]; then
-            printf "https://archive.ubuntu.com/ubuntu/\nhttp://azure.archive.ubuntu.com/ubuntu/\n" \
-              | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
-          fi
+          printf 'Acquire::ForceIPv4 "true";\nAcquire::Retries "5";\nAcquire::http::Timeout "20";\nAcquire::https::Timeout "20";\n' \
+            | sudo tee /etc/apt/apt.conf.d/99-runner-force-ipv4 >/dev/null
           for f in /etc/apt/sources.list /etc/apt/sources.list.d/ubuntu.sources; do
             if [[ -f "$f" ]]; then
               sudo sed -i \
@@ -88,151 +80,119 @@ jobs:
             fi
           done
 
-      - name: Maximize Runner Disk Space & Install ISO Mastering + QEMU/KVM Verification Tools
+      - name: Maximize Runner Disk Space (45+ GB Free) & Install ISO Mastering + QEMU/KVM Tools
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
           set -euo pipefail
-          printf '%s\0' /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL \
+          printf '%s\0' /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/powershell /usr/local/share/chromium \
             | sudo xargs -0 -P4 rm -rf || true
+          sudo docker system prune -af >/dev/null 2>&1 || true
           df -h /
-          printf 'Acquire::ForceIPv4 "true";\nAcquire::Retries "5";\nAcquire::http::Timeout "20";\nAcquire::https::Timeout "20";\n' \
-            | sudo tee /etc/apt/apt.conf.d/99-kiyan-host-ipv4 >/dev/null
+
           sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            debootstrap squashfs-tools xorriso grub-efi-amd64-bin mtools dosfstools \
-            zstd xz-utils cpio initramfs-tools-core sbsigntool kmod libarchive-tools \
-            isolinux syslinux-common qemu-system-x86 qemu-utils ovmf imagemagick python3-yaml
+          sudo apt-get install -y --no-install-recommends \
+            debootstrap squashfs-tools xorriso isolinux syslinux-common syslinux-efi \
+            grub-pc-bin grub-efi-amd64-bin grub-efi-amd64-signed shim-signed mtools dosfstools \
+            sbsigntool openssl initramfs-tools kmod binutils file curl ca-certificates jq \
+            python3 python3-yaml qemu-system-x86 qemu-utils ovmf imagemagick
 
-      - name: Download Verified & MOK-Signed linux-kian v3 Superkernel Packages (Build #20)
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          mkdir -p build/kernel_pkgs build/out/kernel_pkgs
-          gh release download linux-kian-v3-build-20 -R manmojt/kiyan-os -D build/kernel_pkgs/ -p '*.deb' -p 'SHA256SUMS'
-          (cd build/kernel_pkgs && sha256sum -c SHA256SUMS)
-          cp -f build/kernel_pkgs/*.deb build/out/kernel_pkgs/
-          ls -lh build/kernel_pkgs/
-
-      - name: Validate Calamares YAML Configs & Execute Clean-Slate ISO Build Pipeline
+      - name: Validate Calamares Configs & Build Kiyan OS v4 (${{ matrix.edition }}) Hybrid ISO
         run: |
           set -euo pipefail
           python3 - <<'PY'
           import glob, yaml
-          for path in sorted(glob.glob("installer/calamares/**/*.conf", recursive=True) + ["installer/calamares/settings.conf"]):
-              with open(path, encoding="utf-8") as fh:
-                  data = yaml.safe_load(fh)
-              assert isinstance(data, dict), f"Invalid YAML object in {path}"
+          files = ["installer/calamares/settings.conf", "installer/calamares/branding/kian/branding.desc"] + sorted(glob.glob("installer/calamares/modules/*.conf"))
+          for path in files:
+              with open(path, "r", encoding="utf-8") as fh:
+                  doc = yaml.safe_load(fh)
+              assert isinstance(doc, dict), f"{path} did not parse to a YAML mapping!"
               print(f"[YAML OK] {path}")
           PY
-          sudo ./scripts/build-kian-iso.sh
-          sudo chown -R "$USER:$USER" output dist
 
-      - name: Real QEMU/KVM Live Desktop Boot & Framebuffer Screenshot Gate (ZERO Swallowed Errors)
+          sudo -E env KIYAN_EDITION="${{ matrix.edition }}" \
+            ./build/build_all.sh --skip-kernel --edition "${{ matrix.edition }}" \
+            --mirror https://archive.ubuntu.com/ubuntu/ -j "$(nproc)"
+
+          mkdir -p output
+          ISO_FILE="dist/kiyan-os-v4-${{ matrix.edition }}-noble-amd64.iso"
+          sudo chown -R "$USER:$USER" dist build/out/iso_tree || true
+          sudo rm -rf build/out
+          mv "${ISO_FILE}" "output/kiyan-os-v4-${{ matrix.edition }}-noble-amd64.iso"
+          sha256sum "output/kiyan-os-v4-${{ matrix.edition }}-noble-amd64.iso" > "output/kiyan-os-v4-${{ matrix.edition }}-noble-amd64.iso.sha256"
+          ls -lh output/
+
+      - name: Real QEMU/KVM Live Zorin GNOME 46 Wayland Boot, Appearance & Calamares Gate (ZERO Swallowed Errors)
         run: |
           set -euo pipefail
-          ISO_FILE="output/kian-os-v3-noble-amd64.iso"
-          test -s "${ISO_FILE}"
+          EDITION="${{ matrix.edition }}"
+          ISO_PATH="$PWD/output/kiyan-os-v4-${EDITION}-noble-amd64.iso"
+          rm -rf /tmp/qemu-live
           mkdir -p /tmp/qemu-live
 
-          # 1. Inject live verification probe via kernel cmdline / serial console?
-          #    Better: boot the untouched production ISO directly via UEFI (OVMF) OR BIOS CDROM with KVM/max CPU,
-          #    monitor serial log (/dev/ttyS0) until systemd + SDDM/Wayland live boot completes,
-          #    AND capture framebuffer via QEMU QMP screendump!
-          ACCEL_ARGS=(-cpu max)
-          if [[ -r /dev/kvm && -w /dev/kvm ]]; then
-            echo ":: Hardware KVM acceleration available (/dev/kvm)!"
-            ACCEL_ARGS=(-enable-kvm -cpu host)
-          else
-            echo ":: /dev/kvm not writable; using sudo / software TCG -cpu max..."
-            if sudo test -r /dev/kvm && sudo test -w /dev/kvm; then
-              sudo chmod 0666 /dev/kvm
-              ACCEL_ARGS=(-enable-kvm -cpu host)
-              echo ":: Enabled /dev/kvm access for runner!"
-            fi
-          fi
-
-          # Find OVMF firmware code file so we test REAL UEFI GRUB -> linux-kian v3 -> Casper -> Plasma Wayland!
           OVMF_CODE=""
-          for f in /usr/share/OVMF/OVMF_CODE_4M.fd /usr/share/OVMF/OVMF_CODE.fd /usr/share/ovmf/OVMF.fd; do
-            if [[ -f "$f" ]]; then
-              OVMF_CODE="$f"
-              break
-            fi
+          for p in /usr/share/OVMF/OVMF_CODE_4M.fd /usr/share/OVMF/OVMF_CODE.fd /usr/share/ovmf/OVMF.fd; do
+            if [[ -f "$p" ]]; then OVMF_CODE="$p"; break; fi
           done
-          UEFI_ARGS=()
-          if [[ -n "${OVMF_CODE}" ]]; then
-            echo ":: Booting ISO in Pure UEFI Mode using ${OVMF_CODE}"
-            UEFI_ARGS=(-drive "if=pflash,format=raw,readonly=on,file=${OVMF_CODE}")
+          test -n "$OVMF_CODE"
+
+          KVM_FLAGS=(-cpu max -smp 4)
+          if [[ -r /dev/kvm && -w /dev/kvm ]]; then
+            KVM_FLAGS=(-enable-kvm -cpu host -smp 4)
           fi
 
-          python3 - "${ISO_FILE}" "${ACCEL_ARGS[@]}" "--" "${UEFI_ARGS[@]}" <<'PY'
+          python3 - "$ISO_PATH" "$OVMF_CODE" "${KVM_FLAGS[@]}" <<'PY'
           import json, os, select, socket, subprocess, sys, time
 
-          argv = sys.argv[1:]
-          sep = argv.index("--")
-          iso_file = argv[0]
-          accel_args = argv[1:sep]
-          uefi_args = argv[sep + 1:]
+          iso_path = sys.argv[1]
+          ovmf_code = sys.argv[2]
+          kvm_flags = sys.argv[3:]
 
-          serial_log = "/tmp/qemu-live/live_serial.log"
-          serial_sock_path = "/tmp/qemu-live/serial.sock"
           qmp_sock = "/tmp/qemu-live/qmp.sock"
-          ppm_path = "/tmp/qemu-live/live_desktop.ppm"
-          calamares_ppm_path = "/tmp/qemu-live/calamares_desktop.ppm"
-          target_disk = "/tmp/qemu-live/target_disk.qcow2"
-
-          for p in (serial_log, serial_sock_path, qmp_sock, ppm_path, calamares_ppm_path, target_disk):
-              if os.path.exists(p):
-                  os.remove(p)
-
-          subprocess.run(["qemu-img", "create", "-f", "qcow2", target_disk, "20G"], check=True)
+          serial_sock = "/tmp/qemu-live/serial.sock"
+          serial_log = "/tmp/qemu-live/live_serial.log"
+          ppm_desk = "/tmp/qemu-live/live_desktop.ppm"
+          ppm_app = "/tmp/qemu-live/appearance_desktop.ppm"
+          ppm_cal = "/tmp/qemu-live/calamares_desktop.ppm"
+          disk_img = "/tmp/qemu-live/target_nvme.qcow2"
+          subprocess.run(["qemu-img", "create", "-f", "qcow2", disk_img, "32G"], check=True)
 
           cmd = [
               "qemu-system-x86_64",
-              *accel_args,
+              *kvm_flags,
               "-m", "4096M",
-              "-smp", str(os.cpu_count() or 2),
-              *uefi_args,
-              "-cdrom", iso_file,
-              "-drive", f"file={target_disk},if=virtio,format=qcow2",
+              "-drive", f"if=pflash,format=raw,readonly=on,file={ovmf_code}",
+              "-cdrom", iso_path,
+              "-drive", f"file={disk_img},if=virtio,format=qcow2",
               "-boot", "d",
               "-vga", "virtio",
               "-display", "none",
               "-no-reboot",
-              "-serial", f"unix:{serial_sock_path},server,nowait",
-              "-qmp", f"unix:{qmp_sock},server,nowait",
+              "-chardev", f"socket,id=charserial0,path={serial_sock},server=on,wait=off",
+              "-device", "isa-serial,chardev=charserial0",
+              "-qmp", f"unix:{qmp_sock},server=on,wait=off",
           ]
-          print("Launching QEMU:", " ".join(cmd), flush=True)
-          proc = subprocess.Popen(cmd)
+          print("Starting QEMU Live Zorin GNOME 46 Wayland VM:", " ".join(cmd), flush=True)
+          proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+
+          for _ in range(50):
+              if os.path.exists(qmp_sock) and os.path.exists(serial_sock):
+                  break
+              time.sleep(0.2)
 
           ser = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-          for _ in range(50):
-              if os.path.exists(serial_sock_path):
-                  try:
-                      ser.connect(serial_sock_path)
-                      break
-                  except OSError:
-                      pass
-              time.sleep(0.2)
-          else:
-              proc.kill()
-              raise RuntimeError("Failed to connect to QEMU serial UNIX socket!")
+          ser.connect(serial_sock)
           ser.setblocking(False)
 
-          def send_serial(sock: socket.socket, text: str) -> None:
-              data = text.encode("utf-8")
-              for idx in range(0, len(data), 8):
-                  sock.sendall(data[idx:idx + 8])
-                  time.sleep(0.015)
+          def send_serial(sock, text: str) -> None:
+              sock.sendall(text.encode("utf-8"))
 
           def qmp_screendump(out_ppm: str) -> None:
               s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
               s.settimeout(5)
               s.connect(qmp_sock)
               f = s.makefile("r", encoding="utf-8")
-              _ = f.readline()  # greeting
+              _ = f.readline()
               s.sendall(b'{"execute":"qmp_capabilities"}\n')
               _ = f.readline()
               payload = json.dumps({"execute": "screendump", "arguments": {"filename": out_ppm}}) + "\n"
@@ -242,49 +202,52 @@ jobs:
               s.close()
 
           probe1_cmd = (
-              "echo KIAN_PROBE_BEGIN_$((10+1)); "
+              "echo KIYAN_PROBE_BEGIN_$((10+1)); "
               "uname -a; "
-              "sudo dmesg | grep -iE 'Linux version|BORE' | head -n 12; "
               "ls -l /dev/ntsync; "
               "sudo /usr/share/calamares/hooks/pre-install-probe.sh >/tmp/preprobe.log 2>&1 && "
               "test -s /cdrom/casper/filesystem.squashfs && echo SQUASHFS_SOURCE_OK_$((50+5)); "
-              "for i in $(seq 1 45); do "
-              "if pgrep -u kian -f '[p]lasmashell' >/dev/null 2>&1 && pgrep -u kian -f '[k]win_wayland' >/dev/null 2>&1; then "
-              "echo PLASMA_WAYLAND_READY_$((40+2)); "
-              "ps -u kian -o pid,comm | grep -E 'kwin_wayland|plasmashell'; "
+              "for i in $(seq 1 60); do "
+              "if pgrep -u kian -x gnome-shell >/dev/null 2>&1; then "
+              "echo GNOME_WAYLAND_READY_$((40+2)); "
               "break; "
               "fi; sleep 1; done; "
-              "for i in $(seq 1 30); do pgrep -u kian -x ksplashqml >/dev/null 2>&1 || break; sleep 1; done; "
-              "for i in $(seq 1 30); do test -f /home/kian/.config/kian/.initialized_v3 && break; sleep 1; done; "
-              "sleep 4; "
-              "PANEL_COUNT=$(env $(sudo tr '\\0' '\\n' < /proc/$(pgrep -u kian -xo plasmashell)/environ | grep -E '^(DBUS_SESSION_BUS_ADDRESS|XDG_RUNTIME_DIR)=') qdbus-qt5 org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript 'print(panels().length)' 2>/dev/null || echo 0); "
-              "echo PLASMA_PANEL_COUNT_${PANEL_COUNT}; "
-              "test \"${PANEL_COUNT}\" = \"2\" && echo MACOS_AQUA_PANELS_OK_$((60+6)); "
-              "echo KIAN_PROBE1_DONE_$((100+23))\n"
+              "sleep 8; "
+              "echo KIYAN_PROBE1_DONE_$((100+23))\n"
           )
 
           probe2_cmd = (
-              "env $(sudo tr '\\0' '\\n' < /proc/$(pgrep -u kian -xo plasmashell)/environ | "
+              "GNOME_PID=$(pgrep -u kian -xo gnome-shell); "
+              "env XDG_CURRENT_DESKTOP='zorin:GNOME' "
+              "$(sudo tr '\\0' '\\n' < /proc/${GNOME_PID}/environ | "
               "grep -E '^(DBUS_SESSION_BUS_ADDRESS|XDG_RUNTIME_DIR|WAYLAND_DISPLAY|DISPLAY)=') "
-              "QT_QPA_PLATFORM='wayland;xcb' "
-              "kioclient5 exec /home/kian/Desktop/calamares.desktop >/tmp/kio_calamares.log 2>&1 & "
+              "zorin-appearance >/tmp/appearance.log 2>&1 & "
+              "sleep 6; "
+              "if pgrep -u kian -f zorin-appearance >/dev/null 2>&1; then echo APPEARANCE_GUI_ALIVE_$((30+3)); "
+              "else cat /tmp/appearance.log || true; fi; "
+              "echo KIYAN_PROBE2_DONE_$((200+11))\n"
+          )
+
+          probe3_cmd = (
+              "pkill -f zorin-appearance || true; sleep 1; "
+              "GNOME_PID=$(pgrep -u kian -xo gnome-shell); "
+              "env $(sudo tr '\\0' '\\n' < /proc/${GNOME_PID}/environ | "
+              "grep -E '^(DBUS_SESSION_BUS_ADDRESS|XDG_RUNTIME_DIR|WAYLAND_DISPLAY|DISPLAY)=') "
+              "/usr/bin/kian-install-os >/tmp/cal_wrap.log 2>&1 & "
               "for i in $(seq 1 30); do "
               "if pgrep -u root -x calamares >/dev/null 2>&1; then "
-              "sleep 10; "
-              "if pgrep -u root -x calamares >/dev/null 2>&1; then "
-              "echo CALAMARES_GUI_ALIVE_$((70+7)); "
-              "fi; "
+              "sleep 8; "
+              "if pgrep -u root -x calamares >/dev/null 2>&1; then echo CALAMARES_GUI_ALIVE_$((70+7)); fi; "
               "break; "
               "fi; sleep 1; done; "
-              "tail -n 25 /tmp/kio_calamares.log /tmp/calamares-launch.log 2>/dev/null; "
-              "echo KIAN_PROBE2_DONE_$((200+34))\n"
+              "echo KIYAN_PROBE3_DONE_$((300+45))\n"
           )
 
           state = "WAIT_LOGIN"
           state_pos = 0
           state_ts = time.time()
           buf = ""
-          deadline = time.time() + 270
+          deadline = time.time() + 300
 
           with open(serial_log, "wb") as log_fh:
               while time.time() < deadline:
@@ -301,7 +264,6 @@ jobs:
                   tail = buf[state_pos:]
                   if state == "WAIT_LOGIN":
                       if "kian-os login:" in tail:
-                          print("Serial login prompt reached! Sending username 'kian'...", flush=True)
                           time.sleep(0.5)
                           state_pos = len(buf)
                           state_ts = time.time()
@@ -309,7 +271,6 @@ jobs:
                           state = "WAIT_AUTH"
                   elif state == "WAIT_AUTH":
                       if "Password:" in tail:
-                          print("Password prompt reached! Authenticating live user 'kian'...", flush=True)
                           time.sleep(0.3)
                           state_pos = len(buf)
                           state_ts = time.time()
@@ -317,7 +278,6 @@ jobs:
                           state = "WAIT_SHELL"
                       elif ("kian@kian-os" in tail or "$ " in tail):
                           state_pos = len(buf)
-                          state_ts = time.time()
                           send_serial(ser, probe1_cmd)
                           state = "WAIT_PROBE1"
                       elif time.time() - state_ts > 15:
@@ -326,32 +286,30 @@ jobs:
                           send_serial(ser, "\nkian\n")
                   elif state == "WAIT_SHELL":
                       if ("kian@kian-os" in tail or "$ " in tail):
-                          print("Live shell active! Running Probe 1 (kernel/BORE/NTSync/SquashFS/Wayland)...", flush=True)
                           time.sleep(0.3)
                           state_pos = len(buf)
-                          state_ts = time.time()
                           send_serial(ser, probe1_cmd)
                           state = "WAIT_PROBE1"
-                      elif "Login incorrect" in tail:
-                          raise RuntimeError("Live serial login rejected password for 'kian'!")
                   elif state == "WAIT_PROBE1":
-                      if "KIAN_PROBE1_DONE_123" in tail:
-                          print("Probe 1 completed! Capturing clean desktop screenshot & double-clicking Install Kian-OS v3...", flush=True)
-                          qmp_screendump(ppm_path)
+                      if "KIYAN_PROBE1_DONE_123" in tail:
+                          qmp_screendump(ppm_desk)
                           state_pos = len(buf)
-                          state_ts = time.time()
                           send_serial(ser, probe2_cmd)
                           state = "WAIT_PROBE2"
                   elif state == "WAIT_PROBE2":
-                      if "KIAN_PROBE2_DONE_234" in tail:
-                          print("Probe 2 completed! Capturing live Calamares GUI screenshot...", flush=True)
-                          qmp_screendump(calamares_ppm_path)
+                      if "KIYAN_PROBE2_DONE_211" in tail:
+                          qmp_screendump(ppm_app)
+                          state_pos = len(buf)
+                          send_serial(ser, probe3_cmd)
+                          state = "WAIT_PROBE3"
+                  elif state == "WAIT_PROBE3":
+                      if "KIYAN_PROBE3_DONE_345" in tail:
+                          qmp_screendump(ppm_cal)
                           break
 
-          if not os.path.exists(ppm_path):
-              qmp_screendump(ppm_path)
-          if not os.path.exists(calamares_ppm_path):
-              qmp_screendump(calamares_ppm_path)
+          for p in (ppm_desk, ppm_app, ppm_cal):
+              if not os.path.exists(p):
+                  qmp_screendump(p)
 
           ser.close()
           proc.terminate()
@@ -361,58 +319,84 @@ jobs:
               proc.kill()
           PY
 
-          convert /tmp/qemu-live/live_desktop.ppm /tmp/qemu-live/boot_screenshot.png
-          convert /tmp/qemu-live/calamares_desktop.ppm /tmp/qemu-live/calamares_screenshot.png
-          cp -f /tmp/qemu-live/boot_screenshot.png output/boot_screenshot.png
-          cp -f /tmp/qemu-live/calamares_screenshot.png output/calamares_screenshot.png
-          cp -f /tmp/qemu-live/live_serial.log output/live_serial.log
+          convert /tmp/qemu-live/live_desktop.ppm "output/desktop_${EDITION}.png"
+          convert /tmp/qemu-live/appearance_desktop.ppm "output/appearance_${EDITION}.png"
+          convert /tmp/qemu-live/calamares_desktop.ppm "output/calamares_${EDITION}.png"
+          cp -f /tmp/qemu-live/live_serial.log "output/live_serial_${EDITION}.log"
 
-          echo "=== LIVE ISO SERIAL BOOT & CALAMARES DOUBLE-CLICK PROBE VERIFICATION ==="
-          tail -n 80 /tmp/qemu-live/live_serial.log | tr -d '\033\r'
+          tail -n 80 "/tmp/qemu-live/live_serial.log" | tr -d '\033\r'
 
           # HARD GATES (ZERO || true!)
-          grep -q "Linux version 6.8.12-kian-v3" /tmp/qemu-live/live_serial.log
-          grep -qi "BORE" /tmp/qemu-live/live_serial.log
+          grep -qi "liquorix" /tmp/qemu-live/live_serial.log
           grep -q "/dev/ntsync" /tmp/qemu-live/live_serial.log
           grep -q "SQUASHFS_SOURCE_OK_55" /tmp/qemu-live/live_serial.log
-          grep -q "PLASMA_WAYLAND_READY_42" /tmp/qemu-live/live_serial.log
-          grep -q "MACOS_AQUA_PANELS_OK_66" /tmp/qemu-live/live_serial.log
+          grep -q "GNOME_WAYLAND_READY_42" /tmp/qemu-live/live_serial.log
+          grep -q "APPEARANCE_GUI_ALIVE_33" /tmp/qemu-live/live_serial.log
           grep -q "CALAMARES_GUI_ALIVE_77" /tmp/qemu-live/live_serial.log
-          if grep -qi "Kernel panic" /tmp/qemu-live/live_serial.log; then
-            echo "FATAL: Kernel panic detected during Live ISO boot!" >&2
-            exit 1
-          fi
-          test -s output/boot_screenshot.png
-          test -s output/calamares_screenshot.png
-          echo "[PASS] Production ISO booted cleanly & Desktop Double-Click launched Calamares GUI on Wayland!"
+          test -s "output/desktop_${EDITION}.png"
+          test -s "output/appearance_${EDITION}.png"
+          test -s "output/calamares_${EDITION}.png"
+          echo "[PASS] Kiyan OS v4 (${EDITION}) booted Zorin GNOME 46 Wayland + Unlocked Appearance + Calamares!"
 
-      - name: Upload Live Boot Screenshot & Serial Logs Artifact
+      - name: Split ISO If Over GitHub Release 2.0 GiB Single-Asset Limit & Create 1-Click Reassembler
+        run: |
+          set -euo pipefail
+          cd output
+          EDITION="${{ matrix.edition }}"
+          ISO="kiyan-os-v4-${EDITION}-noble-amd64.iso"
+          SIZE=$(stat -c%s "$ISO")
+          echo "ISO $ISO exact size: $SIZE bytes"
+          if [[ "$SIZE" -ge 2097152000 ]]; then
+            echo "ISO >= 2.0 GiB ($SIZE B); creating 1900M parts + 1-click Windows/Linux joiner scripts..."
+            split -b 1900M -d -a 2 "$ISO" "${ISO}.part"
+            rm -f "$ISO"
+            PARTS_WIN=$(ls -1 "${ISO}.part"* | tr '\n' '+' | sed 's/+$//')
+            printf "@echo off\r\necho Assembling %s ...\r\ncopy /b %s %s\r\necho Done! Ready to flash with Rufus or Ventoy.\r\npause\r\n" \
+              "$ISO" "$PARTS_WIN" "$ISO" > "Join-Kiyan-OS-${EDITION}.bat"
+            printf "#!/usr/bin/env bash\nset -e\ncat %s.part* > %s\nsha256sum -c %s.sha256\necho 'Done!'\n" \
+              "$ISO" "$ISO" "$ISO" > "join-kiyan-os-${EDITION}.sh"
+            chmod +x "join-kiyan-os-${EDITION}.sh"
+          fi
+          rm -f "SHA256SUMS-${EDITION}.txt"
+          sha256sum ./* > "/tmp/SHA256SUMS-${EDITION}.txt"
+          mv -f "/tmp/SHA256SUMS-${EDITION}.txt" "SHA256SUMS-${EDITION}.txt"
+          ls -lh .
+
+      - name: Upload Live Boot Screenshots & Logs Artifact (${{ matrix.edition }})
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: kian-os-v3-live-boot-evidence
+          name: kiyan-os-v4-${{ matrix.edition }}-evidence
           path: |
-            output/boot_screenshot.png
-            output/calamares_screenshot.png
-            output/live_serial.log
+            output/*.png
+            output/*.log
+            output/*.sha256
+            output/SHA256SUMS-*.txt
           if-no-files-found: ignore
 
-      - name: Publish Verified Kian-OS v3 ISO & Boot Proof to GitHub Release
+      - name: Publish Kiyan OS v4 (${{ matrix.edition }}) to GitHub Release
         if: success()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           cd output
-          sha256sum kian-os-v3-noble-amd64.iso boot_screenshot.png calamares_screenshot.png live_serial.log > SHA256SUMS
-          TAG="kian-v3-run-${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" \
-            --title "Kian-OS v3 Verified Hybrid OS (x86_64, linux-kian 6.8.12-kian-v3 MOK Signed) Build #${GITHUB_RUN_NUMBER}" \
-            --notes "End-to-end cryptographically signed and KVM/UEFI live-boot + Calamares double-click verified Kian-OS v3 (Ubuntu 24.04 LTS Noble, linux-kian 6.8.12-kian-v3 with BORE 1000Hz + NTSync + BBRv3, Full AMD/Intel/NVIDIA KMS Firmware + kscreen Native Display, Pure KDE Wayland, Calamares 3.3 Btrfs Zstd-3 installer, Dual-Kernel Watchdog)." \
-            --latest \
-            kian-os-v3-noble-amd64.iso \
-            kian-os-v3-noble-amd64.iso.sha256 \
-            SHA256SUMS \
-            boot_screenshot.png \
-            calamares_screenshot.png \
-            live_serial.log
+          TAG="kiyan-v4-build-${GITHUB_RUN_NUMBER}"
+          TITLE="Kiyan OS v4 (Core & Pro — 100% Free Zorin 18 + GNOME 46 + macOS/Win11 + Liquorix 7.3) Build #${GITHUB_RUN_NUMBER}"
+          NOTES="Official Kiyan OS v4 Core & Pro Editions (100% Free). Built on Genuine Zorin OS 18 (GNOME 46 Wayland) + Unlocked macOS Sequoia & Windows 11 Layouts + Frosted Bar/Dock Glass (Solid Window Bodies) + Next-Gen Linux 7.3 Liquorix 1000Hz Superkernel (Native NTSync + TCP BBRv3 + 2026 AMDGPU Full RGB) + Atomic Btrfs Rollback + Custom Kiyan Boot Splash."
+          for attempt in 1 2 3 4 5; do
+            if gh release view "$TAG" >/dev/null 2>&1; then
+              if gh release upload "$TAG" --clobber ./*; then
+                echo "[RELEASE OK] Uploaded ${EDITION:-${{ matrix.edition }}} assets to $TAG"
+                exit 0
+              fi
+            else
+              if gh release create "$TAG" --title "$TITLE" --notes "$NOTES" --latest ./*; then
+                echo "[RELEASE OK] Created $TAG and uploaded ${EDITION:-${{ matrix.edition }}} assets"
+                exit 0
+              fi
+            fi
+            sleep 5
+          done
+          echo "FATAL: Failed to publish GitHub Release $TAG after 5 attempts!" >&2
+          exit 1

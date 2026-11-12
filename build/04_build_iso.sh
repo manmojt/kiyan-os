@@ -109,27 +109,27 @@ log_step "Preparing ISO Tree Hierarchy, .disk Metadata & Casper Live Environment
 rm -rf "${TARGET_TREE}"
 mkdir -p "${TARGET_TREE}"/{casper,isolinux,EFI/BOOT,boot/grub,.disk}
 
-echo 'Kiyan OS 3.0.0 - Release amd64' > "${TARGET_TREE}/.disk/info"
+echo "Kiyan OS 4.0 (${KIYAN_EDITION:-core} Edition) - Release amd64" > "${TARGET_TREE}/.disk/info"
 touch "${TARGET_TREE}/.disk/base_installable"
 echo "full_cd/single" > "${TARGET_TREE}/.disk/cd_type"
 
-# Locate and extract verified linux-kian v3 kernel and initramfs (NEVER fall back silently!)
-log_info "Extracting verified linux-kian v3 live kernel and initramfs images..."
-LIVE_KERNEL=$(find "${TARGET_ROOTFS}/boot" -maxdepth 1 -type f -name "vmlinuz-6.8*-kian-v3" 2>/dev/null | sort -V | tail -n 1 || true)
-LIVE_INITRD=$(find "${TARGET_ROOTFS}/boot" -maxdepth 1 -type f -name "initrd.img-6.8*-kian-v3" 2>/dev/null | sort -V | tail -n 1 || true)
+# Locate and extract verified primary Liquorix 7.3 superkernel and initramfs (NEVER fall back silently!)
+log_info "Extracting verified primary Kiyan v4 superkernel and initramfs images..."
+LIVE_KERNEL=$(find "${TARGET_ROOTFS}/boot" -maxdepth 1 -type f -name "vmlinuz-*liquorix*" 2>/dev/null | sort -V | tail -n 1 || true)
+LIVE_INITRD=$(find "${TARGET_ROOTFS}/boot" -maxdepth 1 -type f -name "initrd.img-*liquorix*" 2>/dev/null | sort -V | tail -n 1 || true)
 
 if [[ "${DRY_RUN}" == "1" ]]; then
     touch "${TARGET_TREE}/casper/vmlinuz" "${TARGET_TREE}/casper/initrd"
 else
     if [[ -z "${LIVE_KERNEL}" || ! -f "${LIVE_KERNEL}" ]]; then
-        log_error "FATAL: Verified vmlinuz-6.8*-kian-v3 binary not found in ${TARGET_ROOTFS}/boot!"
+        log_error "FATAL: Verified vmlinuz-*liquorix* binary not found in ${TARGET_ROOTFS}/boot!"
         exit 1
     fi
     if [[ -z "${LIVE_INITRD}" || ! -f "${LIVE_INITRD}" ]]; then
-        log_error "FATAL: Verified initrd.img-6.8*-kian-v3 image not found in ${TARGET_ROOTFS}/boot!"
+        log_error "FATAL: Verified initrd.img-*liquorix* image not found in ${TARGET_ROOTFS}/boot!"
         exit 1
     fi
-    log_success ":: VERIFIED linux-kian v3 superkernel active: $(basename "${LIVE_KERNEL}")"
+    log_success ":: VERIFIED Kiyan v4 superkernel active: $(basename "${LIVE_KERNEL}")"
     run_cmd cp "${LIVE_KERNEL}" "${TARGET_TREE}/casper/vmlinuz"
     run_cmd cp "${LIVE_INITRD}" "${TARGET_TREE}/casper/initrd"
 
@@ -180,12 +180,12 @@ insmod all_video
 insmod font
 insmod gfxterm
 
-menuentry "Start or Install Kiyan OS v3 (Liquid Crystal Wayland)" --class kian --class os {
+menuentry "Start or Install Kiyan OS v4" --class kian --class os {
     linux /casper/vmlinuz boot=casper preempt=full split_lock_mitigate=0 amdgpu.abmlevel=0 nouveau.config=NvGspRm=1 console=ttyS0,115200 console=tty0 quiet splash loglevel=0 rd.systemd.show_status=false rd.udev.log_level=0 vt.global_cursor_default=0 acpi_osi="Windows 2020" ---
     initrd /casper/initrd
 }
 
-menuentry "Start or Install Kiyan OS v3 (Safe Graphics Mode)" --class recovery --class os {
+menuentry "Start or Install Kiyan OS v4 (Safe Graphics Mode)" --class recovery --class os {
     linux /casper/vmlinuz boot=casper nomodeset console=ttyS0,115200 console=tty0 quiet splash loglevel=0 vt.global_cursor_default=0 ---
     initrd /casper/initrd
 }

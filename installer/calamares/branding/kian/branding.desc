@@ -9,12 +9,12 @@ sidebar: widget
 navigation: widget
 
 strings:
-    productName:         "Kiyan OS v3"
+    productName:         "Kiyan OS v4"
     shortProductName:    "Kiyan OS"
-    version:             "3.0 (Liquid Crystal Edition)"
-    shortVersion:        "3.0"
-    versionedName:       "Kiyan OS v3 (Liquid Crystal Edition)"
-    shortVersionedName:  "Kiyan OS 3.0"
+    version:             "4.0"
+    shortVersion:        "4.0"
+    versionedName:       "Kiyan OS v4"
+    shortVersionedName:  "Kiyan OS 4.0"
     bootloaderEntryName: "Kiyan OS"
     productUrl:          "https://github.com/manmojt/kiyan-os"
     supportUrl:          "https://github.com/manmojt/kiyan-os/issues"
@@ -22,9 +22,9 @@ strings:
     releaseNotesUrl:     "https://github.com/manmojt/kiyan-os/releases"
 
 images:
-    productIcon:         "/usr/share/pixmaps/kiyan-icon.png"
-    productLogo:         "/usr/share/pixmaps/kiyan-icon.png"
-    productWelcome:      "/usr/share/pixmaps/kiyan-welcome.png"
+    productIcon:         "kian-logo.png"
+    productLogo:         "kian-logo.png"
+    productWelcome:      "welcome.png"
 
 style:
    SidebarBackground:        "#1e222a"
