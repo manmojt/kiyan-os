@@ -157,7 +157,7 @@ if [[ -f "$TARGET_ROOT/etc/passwd" ]]; then
     NON_KIAN_USERS=$(awk -F: '$3 >= 1000 && $3 < 60000 && $1 != "kian" && $1 != "nobody" {print $1}' "$TARGET_ROOT/etc/passwd" || true)
     if [[ -n "${NON_KIAN_USERS}" ]]; then
         echo "  ==> Target user(s) detected (${NON_KIAN_USERS}); removing live 'kian' account..."
-        run_in_target userdel -rf kian 2>/dev/null || true
+        run_in_target userdel -r kian 2>/dev/null || true
     fi
 fi
 

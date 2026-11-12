@@ -162,6 +162,8 @@ unsquashfs -f -d "${WORK_DIR}/sq" "${WORK_DIR}/filesystem.squashfs" \
     etc/profile.d/kian-wayland.sh \
     etc/sddm.conf.d/wayland.conf \
     etc/calamares/settings.conf \
+    etc/calamares/branding/kian/branding.desc \
+    etc/calamares/branding/kian/show.qml \
     etc/calamares/modules \
     etc/grub.d/01_kian_watchdog \
     etc/grub.d/09_kian_kernels \
@@ -199,6 +201,9 @@ if grep -q "QT_AUTO_SCREEN_SCALE_FACTOR" "${SQ}/etc/profile.d/kian-wayland.sh"; 
     log_error "FATAL: Blurry QT_AUTO_SCREEN_SCALE_FACTOR=1 still present in /etc/profile.d/kian-wayland.sh!"
     exit 1
 fi
+test -f "${SQ}/etc/calamares/branding/kian/branding.desc"
+test -f "${SQ}/etc/calamares/branding/kian/show.qml"
+test -f "${SQ}/etc/calamares/modules/welcome.conf"
 test -f "${SQ}/etc/calamares/modules/displaymanager.conf"
 test -f "${SQ}/etc/calamares/modules/fstab.conf"
 test -f "${SQ}/etc/calamares/modules/users.conf"
