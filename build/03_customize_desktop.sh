@@ -360,6 +360,23 @@ if [[ ${EUID:-$(id -u)} -eq 0 ]]; then
     mkdir -p -m 0700 /tmp/calamares-runtime-root
     chown 0:0 /tmp/calamares-runtime-root
     export XDG_RUNTIME_DIR="/tmp/calamares-runtime-root"
+    if [[ -z "${WAYLAND_DISPLAY:-}" ]]; then
+        for wsock in /run/user/*/wayland-*; do
+            if [[ -S "${wsock}" && "${wsock}" != *.lock ]]; then
+                export WAYLAND_DISPLAY="${wsock}"
+                break
+            fi
+        done
+    fi
+    if [[ -z "${DISPLAY:-}" ]]; then
+        for xsock in /tmp/.X11-unix/X*; do
+            if [[ -S "${xsock}" ]]; then
+                export DISPLAY=":${xsock##*/X}"
+                break
+            fi
+        done
+    fi
+    export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-wayland;xcb}"
     exec /usr/bin/calamares -D6 "$@"
 fi
 

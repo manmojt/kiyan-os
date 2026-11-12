@@ -138,6 +138,7 @@ unsquashfs -f -d "${WORK_DIR}/sq" "${WORK_DIR}/filesystem.squashfs" \
     usr/bin/kwin_wayland \
     usr/bin/Xwayland \
     usr/bin/xhost \
+    usr/bin/kioclient \
     usr/bin/kioclient5 \
     usr/bin/kscreen-doctor \
     usr/bin/startplasma-wayland \
@@ -179,7 +180,8 @@ test -x "${SQ}/usr/bin/kian-install-os"
 test -x "${SQ}/usr/bin/kwin_wayland"
 test -x "${SQ}/usr/bin/Xwayland"
 test -x "${SQ}/usr/bin/xhost"
-test -x "${SQ}/usr/bin/kioclient5"
+test -x "${SQ}/usr/bin/kioclient"
+test -L "${SQ}/usr/bin/kioclient5"
 test -x "${SQ}/usr/bin/kscreen-doctor"
 test -x "${SQ}/usr/bin/startplasma-wayland"
 test -L "${SQ}/usr/bin/localsend_app"
