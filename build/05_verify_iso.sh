@@ -96,7 +96,7 @@ xorriso -osirrox on -indev "${TARGET_ISO}" \
     -extract /casper/filesystem.squashfs "${WORK_DIR}/filesystem.squashfs" \
     -extract /.disk/info "${WORK_DIR}/disk_info"
 
-grep -q "Kian-OS" "${WORK_DIR}/disk_info"
+grep -qE "Kiyan OS|Kian-OS" "${WORK_DIR}/disk_info"
 
 # 3. Cryptographic Secure Boot Signature on /casper/vmlinuz + Clean 6.8.12-kian-v3 Version
 sbverify --list "${WORK_DIR}/vmlinuz"
