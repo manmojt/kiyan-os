@@ -280,6 +280,8 @@ mkdir -p /etc/apt/apt.conf.d
 cat << 'APT_EOF' > /etc/apt/apt.conf.d/99-kiyan-resilient-net
 Acquire::ForceIPv4 "true";
 Acquire::Retries "5";
+Acquire::http::Timeout "20";
+Acquire::https::Timeout "20";
 APT_EOF
 
 apt-get update
