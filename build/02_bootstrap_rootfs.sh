@@ -275,26 +275,74 @@ DPKG_EOF
 
 apt-get -o Acquire::Retries=3 update
 
-# Core Base System, Bootloaders (UEFI + BIOS), GPU/Wi-Fi Firmware, Mesa DRI & Dual Kernels
+# Core Base System, Bootloaders (UEFI + BIOS), GPU/Wi-Fi Firmware + RegDB, Mesa DRI & Dual Kernels
 apt-get -o Acquire::Retries=3 install -y --no-install-recommends \
-    ca-certificates apt-transport-https \
+    ca-certificates apt-transport-https gnupg \
     systemd systemd-sysv udev dbus dbus-user-session sudo locales tzdata \
-    network-manager wpasupplicant btrfs-progs snapper cryptsetup cryptsetup-initramfs \
+    network-manager wpasupplicant wireless-regdb iw dnsmasq-base \
+    btrfs-progs snapper cryptsetup cryptsetup-initramfs \
     casper user-setup \
     grub-pc-bin grub-efi-amd64-bin grub-efi-amd64-signed shim-signed mokutil sbsigntool \
     linux-firmware intel-microcode amd64-microcode \
     pipewire pipewire-pulse pipewire-alsa wireplumber \
     libgl1-mesa-dri libegl-mesa0 libgbm1 mesa-vulkan-drivers mesa-va-drivers vulkan-tools \
     ubuntu-drivers-common pciutils usbutils dmidecode \
-    curl wget nano iproute2 kmod zstd xz-utils \
+    curl wget nano iproute2 iputils-ping kmod zstd xz-utils \
     linux-image-generic linux-headers-generic
 
-# Verify mandatory hardware GPU KMS firmware & BIOS/UEFI GRUB modules exist right now
+# Verify mandatory hardware GPU/Wi-Fi firmware, regulatory.db & BIOS/UEFI GRUB modules exist right now
 test -d /usr/lib/firmware/amdgpu
 test -d /usr/lib/firmware/i915
 test -d /usr/lib/firmware/nvidia
+test -f /lib/firmware/regulatory.db
 test -f /usr/lib/grub/i386-pc/modinfo.sh
 test -f /usr/lib/grub/x86_64-efi/modinfo.sh
+
+# Disable Wi-Fi Power-Save TX throttling & enforce clean dynamic DNS + Cloudflare/Google fallback
+mkdir -p /etc/NetworkManager/conf.d /etc/modprobe.d
+cat << 'NM_EOF' > /etc/NetworkManager/conf.d/90-kiyan-wifi-dns.conf
+[connection]
+# 2 = disable Wi-Fi power saving (prevents weak signal, high latency & packet drops on Realtek/Intel/MediaTek)
+wifi.powersave = 2
+
+[main]
+dns = default
+rc-manager = file
+
+[global-dns-domain-*]
+servers = 1.1.1.1,8.8.8.8
+NM_EOF
+
+cat << 'WIFI_EOF' > /etc/modprobe.d/99-kiyan-wifi-stability.conf
+options iwlwifi power_save=0
+options rtw88_core disable_lps_deep=y
+options rtw88_pci disable_aspm=y
+options rtw89_core disable_ps_mode=y
+options rtw89_pci disable_aspm_l1=y disable_aspm_l1ss=y
+WIFI_EOF
+
+# Official Kiyan OS Identity (replaces Ubuntu branding across GRUB, Settings, Plymouth & Welcome)
+cat << 'OSREL_EOF' > /etc/os-release
+PRETTY_NAME="Kiyan OS v3"
+NAME="Kiyan OS"
+VERSION_ID="3.0"
+VERSION="3.0 (Liquid Crystal Edition)"
+VERSION_CODENAME=noble
+ID=kiyan
+ID_LIKE="ubuntu debian"
+HOME_URL="https://github.com/manmojt/kiyan-os"
+SUPPORT_URL="https://github.com/manmojt/kiyan-os/issues"
+BUG_REPORT_URL="https://github.com/manmojt/kiyan-os/issues"
+UBUNTU_CODENAME=noble
+LOGO=kiyan-icon
+OSREL_EOF
+
+cat << 'LSB_EOF' > /etc/lsb-release
+DISTRIB_ID=KiyanOS
+DISTRIB_RELEASE=3.0
+DISTRIB_CODENAME=noble
+DISTRIB_DESCRIPTION="Kiyan OS v3"
+LSB_EOF
 
 # Authoritative Casper Live Configuration (prevents 'ubuntu' UID 1000 collision & .disk/info override)
 cat << 'EOF' > /etc/casper.conf

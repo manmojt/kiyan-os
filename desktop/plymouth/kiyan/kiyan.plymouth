@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Kiyan Glass Boot
+Description=Kiyan OS Luxury Glass Boot Splash with Luminous Capsule Loader
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/kiyan
+ScriptFile=/usr/share/plymouth/themes/kiyan/kiyan.script

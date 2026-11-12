@@ -1,0 +1,113 @@
+# ==============================================================================
+# Kiyan OS v3 Custom Luxury Boot Splash (Zero Console Text, Glowing Capsule Bar)
+# ==============================================================================
+
+Window.SetBackgroundTopColor(0.0, 0.0, 0.0);
+Window.SetBackgroundBottomColor(0.0, 0.0, 0.0);
+
+logo.image = Image("logo.png");
+logo.sprite = Sprite(logo.image);
+
+for (i = 0; i < 48; i++)
+  {
+    if (i < 10)
+      loader_images[i] = Image("loader-0" + i + ".png");
+    else
+      loader_images[i] = Image("loader-" + i + ".png");
+  }
+
+loader.sprite = Sprite(loader_images[0]);
+loader.frame = 0;
+loader.tick = 0;
+
+fun layout_elements ()
+  {
+    sw = Window.GetWidth();
+    sh = Window.GetHeight();
+    lx = Window.GetX() + sw / 2 - logo.image.GetWidth() / 2;
+    ly = Window.GetY() + sh / 2 - logo.image.GetHeight() / 2 - 28;
+    logo.sprite.SetPosition(lx, ly, 10);
+
+    px = Window.GetX() + sw / 2 - loader_images[0].GetWidth() / 2;
+    py = ly + logo.image.GetHeight() + 26;
+    loader.sprite.SetPosition(px, py, 20);
+  }
+
+layout_elements();
+
+fun refresh_callback ()
+  {
+    layout_elements();
+    loader.tick++;
+    if (loader.tick >= 2)
+      {
+        loader.tick = 0;
+        loader.frame++;
+        if (loader.frame >= 48)
+          loader.frame = 0;
+        loader.sprite.SetImage(loader_images[loader.frame]);
+      }
+  }
+
+Plymouth.SetRefreshFunction(refresh_callback);
+
+# Suppress noisy kernel/systemd text messages for a pure Apple/Luxury boot experience
+fun message_callback (text)
+  {
+  }
+Plymouth.SetMessageFunction(message_callback);
+Plymouth.SetUpdateStatusFunction(message_callback);
+
+# Minimalist dark-glass LUKS passphrase prompt (only shown if disk encryption is used)
+status = "normal";
+
+fun dialog_setup ()
+  {
+    local.box;
+    box.image = Image("box.png");
+    box.sprite = Sprite(box.image);
+    box.x = Window.GetX() + Window.GetWidth() / 2 - box.image.GetWidth() / 2;
+    box.y = Window.GetY() + Window.GetHeight() * 0.78 - box.image.GetHeight() / 2;
+    box.sprite.SetPosition(box.x, box.y, 1000);
+    global.dialog.box = box;
+    global.dialog.bullet_image = Image("bullet.png");
+  }
+
+fun display_normal_callback ()
+  {
+    global.status = "normal";
+    if (global.dialog)
+      {
+        global.dialog.box.sprite.SetOpacity(0);
+        for (index = 0; global.dialog.bullet[index]; index++)
+          global.dialog.bullet[index].sprite.SetOpacity(0);
+      }
+  }
+
+fun display_password_callback (prompt, bullets)
+  {
+    global.status = "password";
+    if (!global.dialog)
+      dialog_setup();
+    global.dialog.box.sprite.SetOpacity(1);
+    max_bullets = 22;
+    if (bullets > max_bullets)
+      bullets = max_bullets;
+    start_x = global.dialog.box.x + 20;
+    by = global.dialog.box.y + global.dialog.box.image.GetHeight() / 2 - global.dialog.bullet_image.GetHeight() / 2;
+    for (index = 0; global.dialog.bullet[index] || index < bullets; index++)
+      {
+        if (!global.dialog.bullet[index])
+          {
+            global.dialog.bullet[index].sprite = Sprite(global.dialog.bullet_image);
+            global.dialog.bullet[index].sprite.SetPosition(start_x + index * 14, by, 1001);
+          }
+        if (index < bullets)
+          global.dialog.bullet[index].sprite.SetOpacity(1);
+        else
+          global.dialog.bullet[index].sprite.SetOpacity(0);
+      }
+  }
+
+Plymouth.SetDisplayNormalFunction(display_normal_callback);
+Plymouth.SetDisplayPasswordFunction(display_password_callback);

@@ -9,22 +9,22 @@ sidebar: widget
 navigation: widget
 
 strings:
-    productName:         "Kian-OS v3"
-    shortProductName:    "Kian-OS"
-    version:             "3.0 (Noble Edition)"
+    productName:         "Kiyan OS v3"
+    shortProductName:    "Kiyan OS"
+    version:             "3.0 (Liquid Crystal Edition)"
     shortVersion:        "3.0"
-    versionedName:       "Kian-OS v3 (Noble Edition)"
-    shortVersionedName:  "Kian-OS 3.0"
-    bootloaderEntryName: "Kian-OS"
+    versionedName:       "Kiyan OS v3 (Liquid Crystal Edition)"
+    shortVersionedName:  "Kiyan OS 3.0"
+    bootloaderEntryName: "Kiyan OS"
     productUrl:          "https://github.com/manmojt/kiyan-os"
     supportUrl:          "https://github.com/manmojt/kiyan-os/issues"
     knownIssuesUrl:      "https://github.com/manmojt/kiyan-os/issues"
     releaseNotesUrl:     "https://github.com/manmojt/kiyan-os/releases"
 
 images:
-    productIcon:         "/usr/share/calamares/branding/default/squid.png"
-    productLogo:         "/usr/share/calamares/branding/default/squid.png"
-    productWelcome:      "/usr/share/calamares/branding/default/languages.png"
+    productIcon:         "/usr/share/pixmaps/kiyan-icon.png"
+    productLogo:         "/usr/share/pixmaps/kiyan-icon.png"
+    productWelcome:      "/usr/share/pixmaps/kiyan-welcome.png"
 
 style:
    SidebarBackground:        "#1e222a"

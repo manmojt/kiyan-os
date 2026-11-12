@@ -1,0 +1,13 @@
+{
+    "KPlugin": {
+        "Authors": [
+            {
+                "Email": "engineering@kian-os.org",
+                "Name": "Kiyan OS Design Team"
+            }
+        ],
+        "Id": "KiyanCrystal4K",
+        "License": "CC-BY-SA-4.0",
+        "Name": "Kiyan Liquid Crystal 4K"
+    }
+}

@@ -128,13 +128,23 @@ unsquashfs -lc "${WORK_DIR}/filesystem.squashfs" > "${SQ_LIST}"
 grep -q "usr/lib/firmware/amdgpu/" "${SQ_LIST}"
 grep -q "usr/lib/firmware/i915/" "${SQ_LIST}"
 grep -q "usr/lib/firmware/nvidia/" "${SQ_LIST}"
+grep -q "lib/firmware/regulatory.db" "${SQ_LIST}"
+grep -q "usr/share/wallpapers/KiyanCrystal4K/contents/images/3840x2160.jpg" "${SQ_LIST}"
+grep -q "usr/share/plymouth/themes/kiyan/kiyan.plymouth" "${SQ_LIST}"
+grep -q "usr/share/plymouth/themes/kiyan/logo.png" "${SQ_LIST}"
 grep -q "usr/lib/grub/i386-pc/modinfo.sh" "${SQ_LIST}"
 grep -q "usr/lib/grub/x86_64-efi/modinfo.sh" "${SQ_LIST}"
 
 unsquashfs -f -d "${WORK_DIR}/sq" "${WORK_DIR}/filesystem.squashfs" \
     usr/bin/pkexec \
     usr/bin/calamares \
+    usr/bin/firefox \
+    usr/bin/qdbus-qt5 \
+    usr/bin/kdialog \
     usr/bin/kian-install-os \
+    usr/bin/kian-theme-gui \
+    usr/bin/kiyan-session-init \
+    usr/bin/kiyan-system-updater \
     usr/bin/kwin_wayland \
     usr/bin/Xwayland \
     usr/bin/xhost \
@@ -148,17 +158,22 @@ unsquashfs -f -d "${WORK_DIR}/sq" "${WORK_DIR}/filesystem.squashfs" \
     usr/bin/kian-rollback \
     usr/lib/x86_64-linux-gnu/libexec/kdeconnectd \
     usr/share/wayland-sessions/plasmawayland.desktop \
-    usr/share/applications/org.kde.falkon.desktop \
+    usr/share/applications/firefox.desktop \
+    usr/share/applications/kian-theme-switcher.desktop \
+    usr/share/applications/kiyan-system-updater.desktop \
     usr/share/applications/localsend_app.desktop \
     usr/share/applications/calamares.desktop \
     usr/share/polkit-1/actions/org.kian.install.policy \
     usr/share/Kvantum/KianGlass/KianGlass.svg \
     usr/share/Kvantum/FluentDark/FluentDark.svg \
     usr/share/Kvantum/KianAquaGlass/KianAquaGlass.svg \
+    usr/share/plymouth/themes/kiyan/kiyan.plymouth \
+    usr/share/plymouth/themes/kiyan/logo.png \
     usr/share/calamares/hooks/pre-install-probe.sh \
     usr/share/calamares/hooks/post-install-drivers-and-clean.sh \
     etc/casper.conf \
     etc/resolv.conf \
+    etc/NetworkManager/conf.d/90-kiyan-wifi-dns.conf \
     etc/profile.d/kian-wayland.sh \
     etc/sddm.conf.d/wayland.conf \
     etc/calamares/settings.conf \
@@ -172,13 +187,28 @@ unsquashfs -f -d "${WORK_DIR}/sq" "${WORK_DIR}/filesystem.squashfs" \
     etc/modules-load.d/kian-ntsync.conf \
     etc/sysctl.d/99-kian-performance.conf \
     home/kian/.config/kiorc \
+    home/kian/.config/kcminputrc \
+    home/kian/.config/kian/current-shell \
     home/kian/Desktop/calamares.desktop \
+    home/kian/Desktop/kian-theme-switcher.desktop \
     usr/lib/modules/6.8.12-kian-v3/kernel/drivers/misc >/dev/null || true
 
 SQ="${WORK_DIR}/sq"
 test -x "${SQ}/usr/bin/pkexec"
 test -x "${SQ}/usr/bin/calamares"
+test -f "${SQ}/usr/share/applications/firefox.desktop"
+test -x "${SQ}/usr/bin/qdbus-qt5"
+test -x "${SQ}/usr/bin/kdialog"
 test -x "${SQ}/usr/bin/kian-install-os"
+test -x "${SQ}/usr/bin/kian-theme-gui"
+test -x "${SQ}/usr/bin/kiyan-session-init"
+test -x "${SQ}/usr/bin/kiyan-system-updater"
+test -f "${SQ}/usr/share/plymouth/themes/kiyan/kiyan.plymouth"
+test -f "${SQ}/usr/share/plymouth/themes/kiyan/logo.png"
+test -f "${SQ}/etc/NetworkManager/conf.d/90-kiyan-wifi-dns.conf"
+grep -q "TapToClick=true" "${SQ}/home/kian/.config/kcminputrc"
+grep -q "NaturalScroll=true" "${SQ}/home/kian/.config/kcminputrc"
+grep -q "macos-aqua" "${SQ}/home/kian/.config/kian/current-shell"
 test -x "${SQ}/usr/bin/kwin_wayland"
 test -x "${SQ}/usr/bin/Xwayland"
 test -x "${SQ}/usr/bin/xhost"

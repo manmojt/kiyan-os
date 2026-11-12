@@ -43,6 +43,7 @@ jobs:
               "archive.ubuntu.com",
               "security.ubuntu.com",
               "mirrors.edge.kernel.org",
+              "packages.mozilla.org",
               "github.com",
               "api.github.com",
               "objects.githubusercontent.com",
@@ -252,7 +253,8 @@ jobs:
               "break; "
               "fi; sleep 1; done; "
               "for i in $(seq 1 30); do pgrep -u kian -x ksplashqml >/dev/null 2>&1 || break; sleep 1; done; "
-              "sleep 6; "
+              "for i in $(seq 1 30); do test -f /home/kian/.config/kian/.initialized_v3 && break; sleep 1; done; "
+              "sleep 4; "
               "echo KIAN_PROBE1_DONE_$((100+23))\n"
           )
 

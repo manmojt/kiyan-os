@@ -101,11 +101,11 @@ apt-get -o Acquire::Retries=3 install -y --no-install-recommends \
     plasma-workspace-wayland \
     kwin-wayland \
     xwayland x11-xserver-utils \
-    kscreen kde-cli-tools \
-    plasma-desktop \
+    kscreen kde-cli-tools qdbus-qt5 kdialog libinput-tools \
+    plasma-desktop plasma-widgets-addons appmenu-gtk3-module \
     konsole dolphin plasma-discover plasma-discover-backend-flatpak flatpak \
-    plasma-nm plasma-pa systemsettings falkon ark vlc kate gwenview \
-    plymouth plymouth-theme-spinner \
+    plasma-nm plasma-pa systemsettings ark vlc kate gwenview \
+    plymouth plymouth-label plymouth-theme-spinner \
     sddm sddm-theme-breeze \
     pkexec polkitd polkit-kde-agent-1 \
     kdeconnect \
@@ -115,6 +115,24 @@ apt-get -o Acquire::Retries=3 install -y --no-install-recommends \
     fontconfig fonts-inter fonts-vazirmatn fonts-firacode \
     calamares calamares-settings-ubuntu-common \
     rsync efibootmgr dosfstools btrfs-progs
+
+# Install Official Native Mozilla Firefox (.deb, Pure Wayland, ZERO Snap wrapper!)
+echo ":: Configuring Official Mozilla APT repository for native Firefox .deb..."
+install -d -m 0755 /etc/apt/keyrings
+curl -fsSL --retry 3 "https://packages.mozilla.org/apt/repo-signing-key.gpg" -o /etc/apt/keyrings/packages.mozilla.org.asc
+chmod 0644 /etc/apt/keyrings/packages.mozilla.org.asc
+cat << 'MOZ_EOF' > /etc/apt/sources.list.d/mozilla.list
+deb [signed-by=/etc/apt/keyrings/packages.mozilla.org.asc] https://packages.mozilla.org/apt mozilla main
+MOZ_EOF
+cat << 'PIN_EOF' > /etc/apt/preferences.d/mozilla
+Package: *
+Pin: origin packages.mozilla.org
+Pin-Priority: 1001
+PIN_EOF
+apt-get -o Acquire::Retries=3 update
+apt-get -o Acquire::Retries=3 install -y --no-install-recommends firefox
+test -x /usr/bin/firefox
+test -f /usr/share/applications/firefox.desktop
 
 # Install Official LocalSend v1.18.2 x86_64 .deb so localsend_app.desktop & /usr/bin/localsend_app are genuine
 echo ":: Installing LocalSend v1.18.2 x86_64 package..."
@@ -126,9 +144,12 @@ ln -sfn /opt/localsend_app/localsend_app /usr/bin/localsend
 test -x /usr/bin/localsend_app
 test -f /usr/share/applications/localsend_app.desktop
 
-# Verify mandatory desktop, display EDID/Wayland, and installer binaries exist right now (ZERO silent omissions!)
+# Verify mandatory desktop, Firefox, qdbus-qt5, display EDID/Wayland & installer binaries exist right now
 test -x /usr/bin/pkexec
 test -x /usr/bin/calamares
+test -x /usr/bin/firefox
+test -x /usr/bin/qdbus-qt5
+test -x /usr/bin/kdialog
 test -x /usr/bin/kwin_wayland
 test -x /usr/bin/Xwayland
 test -x /usr/bin/xhost
@@ -142,9 +163,6 @@ test -f /usr/share/wayland-sessions/plasmawayland.desktop
 if [[ -f /usr/share/xsessions/plasma.desktop ]]; then
     mv /usr/share/xsessions/plasma.desktop /usr/share/xsessions/plasma.desktop.disabled
 fi
-
-# Set animated boot splash theme without rebuilding initramfs prematurely
-plymouth-set-default-theme spinner || true
 
 apt-get clean
 rm -rf /var/lib/apt/lists/*
@@ -288,14 +306,84 @@ done
 
 cat << 'EOF' > "${TARGET_ROOTFS}/etc/skel/.config/Kvantum/kvantum.kvconfig"
 [General]
-theme=KianGlass
+theme=KianAquaGlass
 EOF
 
 mkdir -p "${TARGET_ROOTFS}/etc/skel/.config/kian"
-echo "kian-native" > "${TARGET_ROOTFS}/etc/skel/.config/kian/current-shell"
+echo "macos-aqua" > "${TARGET_ROOTFS}/etc/skel/.config/kian/current-shell"
+
+# Deploy Kiyan Brand Icons, 4K Crystal Wallpaper & Custom Luxury Plymouth Boot Splash
+mkdir -p "${TARGET_ROOTFS}/usr/share/pixmaps" \
+         "${TARGET_ROOTFS}/usr/share/wallpapers/KiyanCrystal4K" \
+         "${TARGET_ROOTFS}/usr/share/plymouth/themes/kiyan"
+
+if [[ -d "${DESKTOP_DIR}/branding" ]]; then
+    run_cmd cp -r "${DESKTOP_DIR}/branding"/* "${TARGET_ROOTFS}/usr/share/pixmaps/"
+    run_cmd cp "${DESKTOP_DIR}/branding/kiyan-icon.png" "${TARGET_ROOTFS}/usr/share/pixmaps/kian-logo.png"
+fi
+
+if [[ -d "${DESKTOP_DIR}/wallpapers/KiyanCrystal4K" ]]; then
+    run_cmd cp -r "${DESKTOP_DIR}/wallpapers/KiyanCrystal4K"/* "${TARGET_ROOTFS}/usr/share/wallpapers/KiyanCrystal4K/"
+    mkdir -p "${TARGET_ROOTFS}/usr/share/wallpapers/Next/contents/images"
+    run_cmd cp -f "${DESKTOP_DIR}/wallpapers/KiyanCrystal4K/contents/images/3840x2160.jpg" \
+        "${TARGET_ROOTFS}/usr/share/wallpapers/Next/contents/images/3840x2160.jpg"
+    run_cmd cp -f "${DESKTOP_DIR}/wallpapers/KiyanCrystal4K/contents/images/1920x1080.jpg" \
+        "${TARGET_ROOTFS}/usr/share/wallpapers/Next/contents/images/1920x1080.jpg"
+    ln -sfn "/usr/share/wallpapers/KiyanCrystal4K" "${TARGET_ROOTFS}/usr/share/wallpapers/default"
+fi
+
+if [[ -d "${DESKTOP_DIR}/plymouth/kiyan" ]]; then
+    run_cmd cp -r "${DESKTOP_DIR}/plymouth/kiyan"/* "${TARGET_ROOTFS}/usr/share/plymouth/themes/kiyan/"
+fi
+
+# Default macOS-style Window Buttons (Traffic Lights Left), KWin Wayland Crisp Scaling & Trackpad Gestures
+cat << 'EOF' > "${TARGET_ROOTFS}/etc/skel/.config/kwinrc"
+[org.kde.kdecoration2]
+ButtonsOnLeft=XIA
+ButtonsOnRight=
+library=org.kde.breeze
+theme=Breeze
+
+[Wayland]
+EnablePrimarySelection=true
+
+[Xwayland]
+XwaylandScale=1
+EOF
+
+# Out-of-the-box macOS Trackpad Behavior (Tap-to-Click, Two-Finger Right Click, Natural Scroll)
+cat << 'EOF' > "${TARGET_ROOTFS}/etc/skel/.config/kcminputrc"
+[Libinput][Touchpad]
+ClickMethod=2
+LmrTapButtonMap=false
+NaturalScroll=true
+PointerAcceleration=0.2
+TapToClick=true
+TapAndDrag=true
+TwoFingerTap=true
+EOF
+
+# Set Native Mozilla Firefox as Default Browser Across All MIME Types
+cat << 'EOF' > "${TARGET_ROOTFS}/etc/skel/.config/mimeapps.list"
+[Default Applications]
+text/html=firefox.desktop
+x-scheme-handler/http=firefox.desktop
+x-scheme-handler/https=firefox.desktop
+x-scheme-handler/about=firefox.desktop
+x-scheme-handler/unknown=firefox.desktop
+application/xhtml+xml=firefox.desktop
+EOF
+
+# Disable KDE Splash Screen so Kiyan Boot Logo transitions straight into the macOS Aqua 4K Desktop
+cat << 'EOF' > "${TARGET_ROOTFS}/etc/skel/.config/ksplashrc"
+[KSplash]
+Engine=none
+Theme=None
+EOF
 
 cat << 'EOF' > "${TARGET_ROOTFS}/etc/skel/.config/kdeglobals"
 [General]
+BrowserApplication=firefox.desktop
 ColorScheme=BreezeDark
 widgetStyle=kvantum-dark
 
@@ -304,6 +392,68 @@ Theme=Papirus-Dark
 
 [KDE]
 LookAndFeelPackage=org.kde.breezedark.desktop
+SingleClick=false
+EOF
+
+# Graphical Triple-Shell Switcher App (macOS Aqua / Windows 11 Fluent / Kiyan Crystal)
+cat << 'EOF' > "${TARGET_ROOTFS}/usr/bin/kian-theme-gui"
+#!/usr/bin/env bash
+set -euo pipefail
+CHOICE=$(kdialog --title "Kiyan OS Triple-Shell" --radiolist "Select your active desktop personality:" \
+    "aqua" "macOS Aqua (Top Global Menu Bar + Floating Bottom Dock)" on \
+    "fluent" "Windows 11 Fluent (Centered Taskbar & Start Menu)" off \
+    "native" "Kiyan Dark Crystal (Glassmorphic Neon Dock)" off || true)
+if [[ -n "${CHOICE}" ]]; then
+    /usr/bin/kian-shell-switcher "${CHOICE}"
+fi
+EOF
+chmod 0755 "${TARGET_ROOTFS}/usr/bin/kian-theme-gui"
+
+# Official User-Initiated APT & Package Upgrade Utility (Standard Package Manager Wrapper)
+cat << 'EOF' > "${TARGET_ROOTFS}/usr/bin/kiyan-system-updater"
+#!/usr/bin/env bash
+set -euo pipefail
+if kdialog --title "Kiyan OS System Updater" --yesno "Check for standard Kiyan OS & Ubuntu security/package updates via APT now?"; then
+    konsole -e bash -c "echo '=== Updating Kiyan OS Packages ==='; sudo apt-get update && sudo apt-get dist-upgrade -y && echo '=== Update Complete! ==='; read -rp 'Press Enter to close...'"
+fi
+EOF
+chmod 0755 "${TARGET_ROOTFS}/usr/bin/kiyan-system-updater"
+
+# First-Login Autostart Hook: Applies macOS Aqua Panels + 4K Crystal Wallpaper Automatically!
+mkdir -p "${TARGET_ROOTFS}/etc/skel/.config/autostart"
+cat << 'EOF' > "${TARGET_ROOTFS}/usr/bin/kiyan-session-init"
+#!/usr/bin/env bash
+set -euo pipefail
+MARKER="${XDG_CONFIG_HOME:-$HOME/.config}/kian/.initialized_v3"
+for f in /sys/class/drm/card*-eDP-*/amdgpu/panel_power_savings; do
+    if [[ -w "$f" ]]; then echo 0 > "$f" 2>/dev/null || true; fi
+done
+if [[ ! -f "${MARKER}" ]]; then
+    for _ in $(seq 1 25); do
+        if qdbus-qt5 org.kde.plasmashell /PlasmaShell >/dev/null 2>&1; then
+            sleep 2
+            /usr/bin/kian-shell-switcher macos-aqua || true
+            if command -v plasma-apply-wallpaperimage >/dev/null 2>&1; then
+                plasma-apply-wallpaperimage /usr/share/wallpapers/KiyanCrystal4K/contents/images/3840x2160.jpg >/dev/null 2>&1 || true
+            fi
+            mkdir -p "$(dirname "${MARKER}")"
+            touch "${MARKER}"
+            break
+        fi
+        sleep 1
+    done
+fi
+EOF
+chmod 0755 "${TARGET_ROOTFS}/usr/bin/kiyan-session-init"
+
+cat << 'EOF' > "${TARGET_ROOTFS}/etc/skel/.config/autostart/kiyan-session-init.desktop"
+[Desktop Entry]
+Type=Application
+Name=Kiyan Desktop Initializer
+Exec=/usr/bin/kiyan-session-init
+Icon=kiyan-icon
+Terminal=false
+X-KDE-autostart-phase=2
 EOF
 
 # ------------------------------------------------------------------------------
@@ -458,12 +608,12 @@ cat << 'EOF' > "${TARGET_ROOTFS}/etc/skel/Desktop/calamares.desktop"
 [Desktop Entry]
 Type=Application
 Version=1.0
-Name=Install Kian-OS v3
+Name=Install Kiyan OS v3
 GenericName=Live Operating System Installer
-Comment=Install KIAN-OS v3 cleanly to disk with automated Btrfs layout
+Comment=Install Kiyan OS v3 cleanly to disk with automated Btrfs layout
 Exec=/usr/bin/kian-install-os
 TryExec=/usr/bin/kian-install-os
-Icon=calamares
+Icon=/usr/share/pixmaps/kiyan-icon.png
 Terminal=false
 Categories=Qt;System;
 StartupNotify=true
@@ -472,6 +622,38 @@ EOF
 chmod 0755 "${TARGET_ROOTFS}/etc/skel/Desktop/calamares.desktop"
 cp -f "${TARGET_ROOTFS}/etc/skel/Desktop/calamares.desktop" "${TARGET_ROOTFS}/usr/share/applications/calamares.desktop"
 chmod 0755 "${TARGET_ROOTFS}/usr/share/applications/calamares.desktop"
+
+cat << 'EOF' > "${TARGET_ROOTFS}/usr/share/applications/kian-theme-switcher.desktop"
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Kiyan Theme Switcher (3 Shells)
+GenericName=Desktop Layout & Glass Theme Switcher
+Comment=Switch instantly between macOS Aqua, Windows 11 Fluent, and Kiyan Crystal
+Exec=/usr/bin/kian-theme-gui
+Icon=preferences-desktop-theme
+Terminal=false
+Categories=Qt;KDE;Settings;DesktopSettings;
+StartupNotify=true
+EOF
+chmod 0755 "${TARGET_ROOTFS}/usr/share/applications/kian-theme-switcher.desktop"
+cp -f "${TARGET_ROOTFS}/usr/share/applications/kian-theme-switcher.desktop" "${TARGET_ROOTFS}/etc/skel/Desktop/kian-theme-switcher.desktop"
+chmod 0755 "${TARGET_ROOTFS}/etc/skel/Desktop/kian-theme-switcher.desktop"
+
+cat << 'EOF' > "${TARGET_ROOTFS}/usr/share/applications/kiyan-system-updater.desktop"
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Kiyan System Updater
+GenericName=System Package Updater
+Comment=Update Kiyan OS packages and security fixes
+Exec=/usr/bin/kiyan-system-updater
+Icon=system-software-update
+Terminal=false
+Categories=Qt;KDE;System;
+StartupNotify=true
+EOF
+chmod 0755 "${TARGET_ROOTFS}/usr/share/applications/kiyan-system-updater.desktop"
 
 if [[ "${DRY_RUN}" != "1" ]]; then
     cp -a "${TARGET_ROOTFS}/etc/skel/." "${TARGET_ROOTFS}/home/kian/"
@@ -533,13 +715,13 @@ if [[ -f "${SCRIPTS_DIR}/41_kian_snapshots" ]]; then
     run_cmd chmod +x "${TARGET_ROOTFS}/etc/grub.d/41_kian_snapshots"
 fi
 
-# Authoritative /etc/default/grub with Kian-OS v3 kernel command line, NVIDIA GSP KMS & panic=10 watchdog trigger
+# Authoritative /etc/default/grub with Silent Kiyan Splash, AMD Vari-Bright Off, NVIDIA GSP KMS & Watchdog
 cat << 'EOF' > "${TARGET_ROOTFS}/etc/default/grub"
 GRUB_DEFAULT="kian_primary"
 GRUB_TIMEOUT_STYLE=menu
-GRUB_TIMEOUT=3
-GRUB_DISTRIBUTOR="Kian-OS v3"
-GRUB_CMDLINE_LINUX_DEFAULT="quiet splash preempt=full split_lock_mitigate=0 nouveau.config=NvGspRm=1 panic=10"
+GRUB_TIMEOUT=2
+GRUB_DISTRIBUTOR="Kiyan OS v3"
+GRUB_CMDLINE_LINUX_DEFAULT="quiet splash loglevel=0 rd.systemd.show_status=false rd.udev.log_level=0 udev.log_priority=0 vt.global_cursor_default=0 amdgpu.abmlevel=0 preempt=full split_lock_mitigate=0 nouveau.config=NvGspRm=1 panic=10"
 GRUB_CMDLINE_LINUX=""
 EOF
 
@@ -628,12 +810,11 @@ emit_kian_entry() {
     [ -f "/boot/initrd.img-${kver}" ] || return 0
 
     cat << ENTRY_EOF
-menuentry '${entry_title}' --class kian-os --class gnu-linux --class gnu --class os --id '${entry_id}' {
+menuentry '${entry_title}' --class kiyan-os --class gnu-linux --class gnu --class os --id '${entry_id}' {
 	load_video
 	gfxmode \$linux_gfx_mode
 	insmod gzio
 ${BOOT_PREP}
-	echo 'Loading ${entry_title} (${kver}) ...'
 	linux ${vmlinuz_rel} root=${LINUX_ROOT_DEVICE} ro ${ROOT_SUBVOL_FLAG} ${GRUB_CMDLINE_LINUX} ${extra_args}
 	initrd ${initrd_rel}
 }
@@ -641,11 +822,11 @@ ENTRY_EOF
 }
 
 if [ -n "${PRIMARY_KVER}" ]; then
-    emit_kian_entry "Kian-OS v3 (Superkernel ${PRIMARY_KVER} - BORE 1000Hz Wayland)" "kian_primary" "${PRIMARY_KVER}" "${GRUB_CMDLINE_LINUX_DEFAULT}"
+    emit_kian_entry "Kiyan OS v3 (Superkernel ${PRIMARY_KVER})" "kian_primary" "${PRIMARY_KVER}" "${GRUB_CMDLINE_LINUX_DEFAULT}"
 fi
 
 if [ -n "${FALLBACK_KVER}" ]; then
-    emit_kian_entry "Kian-OS v3 (Safe LTS Fallback ${FALLBACK_KVER})" "kian_fallback_generic" "${FALLBACK_KVER}" "quiet splash"
+    emit_kian_entry "Kiyan OS v3 (Safe Recovery ${FALLBACK_KVER})" "kian_fallback_generic" "${FALLBACK_KVER}" "quiet splash loglevel=0 vt.global_cursor_default=0"
 fi
 EOF
 chmod +x "${TARGET_ROOTFS}/etc/grub.d/09_kian_kernels"
@@ -709,34 +890,43 @@ chmod +x "${TARGET_ROOTFS}/etc/initramfs-tools/scripts/init-bottom/kian_overlayf
 log_step "Applying Full Kian-OS v3 Branding & Regenerating Initramfs (With All Hooks)"
 
 cat << 'EOF' > "${TARGET_ROOTFS}/etc/os-release"
-NAME="Kian-OS"
-VERSION="3.0 (Noble Edition)"
-ID=kian-os
+NAME="Kiyan OS"
+VERSION="3.0 (Liquid Crystal Edition)"
+ID=kiyan-os
 ID_LIKE="ubuntu debian"
-PRETTY_NAME="Kian-OS v3 (Noble Edition)"
+PRETTY_NAME="Kiyan OS v3"
 VERSION_ID="3.0"
 HOME_URL="https://github.com/manmojt/kiyan-os"
 SUPPORT_URL="https://github.com/manmojt/kiyan-os/issues"
 BUG_REPORT_URL="https://github.com/manmojt/kiyan-os/issues"
 PRIVACY_POLICY_URL="https://github.com/manmojt/kiyan-os"
 UBUNTU_CODENAME=noble
-LOGO=kian-logo
+LOGO=kiyan-icon
 EOF
 
 cat << 'EOF' > "${TARGET_ROOTFS}/etc/lsb-release"
-DISTRIB_ID=Kian-OS
+DISTRIB_ID=KiyanOS
 DISTRIB_RELEASE=3.0
 DISTRIB_CODENAME=noble
-DISTRIB_DESCRIPTION="Kian-OS v3 (Noble Edition)"
+DISTRIB_DESCRIPTION="Kiyan OS v3"
 EOF
 
-echo "Kian-OS v3 (Noble Edition) \n \l" > "${TARGET_ROOTFS}/etc/issue"
-echo "Kian-OS v3 (Noble Edition) \n \l" > "${TARGET_ROOTFS}/etc/issue.net"
+echo "Kiyan OS v3 \n \l" > "${TARGET_ROOTFS}/etc/issue"
+echo "Kiyan OS v3 \n \l" > "${TARGET_ROOTFS}/etc/issue.net"
 echo "kian-os" > "${TARGET_ROOTFS}/etc/hostname"
 
 if [[ "${DRY_RUN}" != "1" ]]; then
-    log_info "Regenerating initramfs for ALL installed kernels so casper.conf, 99kian_autologin, kian_overlayfs & early SPI modules are embedded..."
+    log_info "Activating Kiyan Plymouth Boot Splash & Regenerating Initramfs (With All Hooks)..."
     chroot "${TARGET_ROOTFS}" /usr/bin/env DEBIAN_FRONTEND=noninteractive CASPER_GENERATE_UUID=1 bash -euo pipefail << 'CHROOT_INITRD_EOF'
+if [[ -f /usr/share/plymouth/themes/kiyan/kiyan.plymouth ]]; then
+    update-alternatives --install /usr/share/plymouth/themes/default.plymouth default.plymouth \
+        /usr/share/plymouth/themes/kiyan/kiyan.plymouth 500
+    update-alternatives --set default.plymouth /usr/share/plymouth/themes/kiyan/kiyan.plymouth
+    mkdir -p /etc/plymouth
+    printf "[Daemon]\nTheme=kiyan\nShowDelay=0\nDeviceTimeout=8\n" > /etc/plymouth/plymouthd.conf
+fi
+update-alternatives --set x-www-browser /usr/bin/firefox || true
+update-alternatives --set gnome-www-browser /usr/bin/firefox || true
 for kver in $(ls -1 /lib/modules | sort -V); do
     echo ":: Building initramfs for kernel ${kver}..."
     update-initramfs -c -k "${kver}" || update-initramfs -u -k "${kver}"

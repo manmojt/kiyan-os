@@ -83,23 +83,23 @@ get_current_shell() {
             exit 0
         fi
     fi
-    echo "kian-native (default)"
+    echo "macos-aqua (default)"
     exit 0
 }
 
-# DBus dispatch helper handling qdbus, qdbus-qt5, or dbus-send
+# DBus dispatch helper handling qdbus-qt5, qdbus, or qtpaths-backed qdbus
 dbus_call() {
     local service="$1"
     local path="$2"
     local method="$3"
     shift 3
 
-    if command -v qdbus >/dev/null 2>&1; then
-        qdbus "$service" "$path" "$method" "$@" 2>/dev/null || true
-    elif command -v qdbus-qt5 >/dev/null 2>&1; then
+    if command -v qdbus-qt5 >/dev/null 2>&1; then
         qdbus-qt5 "$service" "$path" "$method" "$@" 2>/dev/null || true
-    elif command -v dbus-send >/dev/null 2>&1; then
-        dbus-send --session --dest="$service" --type=method_call "$path" "$method" "$@" 2>/dev/null || true
+    elif [[ -x /usr/lib/qt5/bin/qdbus ]]; then
+        /usr/lib/qt5/bin/qdbus "$service" "$path" "$method" "$@" 2>/dev/null || true
+    elif command -v qdbus >/dev/null 2>&1; then
+        qdbus "$service" "$path" "$method" "$@" 2>/dev/null || true
     fi
 }
 

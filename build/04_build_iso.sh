@@ -109,7 +109,7 @@ log_step "Preparing ISO Tree Hierarchy, .disk Metadata & Casper Live Environment
 rm -rf "${TARGET_TREE}"
 mkdir -p "${TARGET_TREE}"/{casper,isolinux,EFI/BOOT,boot/grub,.disk}
 
-echo 'Kian-OS 3.0.0 "Noble" - Release amd64' > "${TARGET_TREE}/.disk/info"
+echo 'Kiyan OS 3.0.0 - Release amd64' > "${TARGET_TREE}/.disk/info"
 touch "${TARGET_TREE}/.disk/base_installable"
 echo "full_cd/single" > "${TARGET_TREE}/.disk/cd_type"
 
@@ -180,13 +180,13 @@ insmod all_video
 insmod font
 insmod gfxterm
 
-menuentry "Try or Install KIAN-OS v3 (linux-kian v3, Pure Wayland)" --class kian --class os {
-    linux /casper/vmlinuz boot=casper preempt=full split_lock_mitigate=0 nouveau.config=NvGspRm=1 console=ttyS0,115200 console=tty0 quiet splash acpi_osi="Windows 2020" ---
+menuentry "Start or Install Kiyan OS v3 (Liquid Crystal Wayland)" --class kian --class os {
+    linux /casper/vmlinuz boot=casper preempt=full split_lock_mitigate=0 amdgpu.abmlevel=0 nouveau.config=NvGspRm=1 console=ttyS0,115200 console=tty0 quiet splash loglevel=0 rd.systemd.show_status=false rd.udev.log_level=0 vt.global_cursor_default=0 acpi_osi="Windows 2020" ---
     initrd /casper/initrd
 }
 
-menuentry "Try or Install KIAN-OS v3 (Safe Graphics Mode - Nomodeset)" --class recovery --class os {
-    linux /casper/vmlinuz boot=casper nomodeset console=ttyS0,115200 console=tty0 quiet splash ---
+menuentry "Start or Install Kiyan OS v3 (Safe Graphics Mode)" --class recovery --class os {
+    linux /casper/vmlinuz boot=casper nomodeset console=ttyS0,115200 console=tty0 quiet splash loglevel=0 vt.global_cursor_default=0 ---
     initrd /casper/initrd
 }
 
@@ -303,17 +303,17 @@ PROMPT 0
 TIMEOUT 30
 DEFAULT kian
 
-MENU TITLE KIAN-OS v3 (Noble Numbat 24.04 LTS)
+MENU TITLE Kiyan OS v3 (Liquid Crystal Edition)
 
 LABEL kian
-  MENU LABEL Try or Install KIAN-OS v3 (Pure Wayland)
+  MENU LABEL Start or Install Kiyan OS v3 (Liquid Crystal Wayland)
   KERNEL /casper/vmlinuz
-  APPEND initrd=/casper/initrd boot=casper preempt=full split_lock_mitigate=0 nouveau.config=NvGspRm=1 console=ttyS0,115200 console=tty0 quiet splash acpi_osi="Windows 2020" ---
+  APPEND initrd=/casper/initrd boot=casper preempt=full split_lock_mitigate=0 amdgpu.abmlevel=0 nouveau.config=NvGspRm=1 console=ttyS0,115200 console=tty0 quiet splash loglevel=0 rd.systemd.show_status=false rd.udev.log_level=0 vt.global_cursor_default=0 acpi_osi="Windows 2020" ---
 
 LABEL safe
-  MENU LABEL Try or Install KIAN-OS v3 (Safe Graphics Mode)
+  MENU LABEL Start or Install Kiyan OS v3 (Safe Graphics Mode)
   KERNEL /casper/vmlinuz
-  APPEND initrd=/casper/initrd boot=casper nomodeset console=ttyS0,115200 console=tty0 quiet splash ---
+  APPEND initrd=/casper/initrd boot=casper nomodeset console=ttyS0,115200 console=tty0 quiet splash loglevel=0 vt.global_cursor_default=0 ---
 EOF
 
 # ------------------------------------------------------------------------------
