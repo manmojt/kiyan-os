@@ -140,7 +140,7 @@ apt-get install -y --no-install-recommends \
     xdg-utils gir1.2-gmenu-3.0 appstream appstream-data-zorin-os \
     fonts-zorin-os-core fonts-inter fonts-vazirmatn fonts-firacode fonts-jetbrains-mono fonts-noto-color-emoji \
     nautilus gnome-terminal gnome-text-editor gnome-calculator gnome-system-monitor \
-    gnome-disk-utility baobab eog evince file-roller gnome-screenshot \
+    gnome-disk-utility baobab eog evince file-roller gnome-screenshot acl \
     gnome-power-manager power-profiles-daemon upower brightnessctl colord \
     packagekit flatpak gnome-software gnome-software-plugin-flatpak \
     rtkit evolution-data-server \
@@ -663,13 +663,23 @@ if [[ ${EUID:-$(id -u)} -eq 0 ]]; then
         done
     fi
 
-    if [[ -n "${WAYLAND_DISPLAY:-}" && -S "${WAYLAND_DISPLAY}" ]]; then
+    # Grant root access to the user's Wayland socket & runtime dir (mode 0700 blocks symlink traversal for UID 0 unless ACL or Xwayland is used!)
+    if [[ -n "${WAYLAND_DISPLAY:-}" && -S "${WAYLAND_DISPLAY}" ]] && command -v setfacl >/dev/null 2>&1; then
+        setfacl -m u:root:rx "$(dirname "${WAYLAND_DISPLAY}")" 2>/dev/null || true
+        setfacl -m u:root:rwx "${WAYLAND_DISPLAY}" 2>/dev/null || true
+    fi
+
+    if [[ -n "${DISPLAY:-}" && -n "${XAUTHORITY:-}" && -f "${XAUTHORITY}" ]]; then
+        # Xwayland/X11 provides 100% reliable crisp titlebars & positioning for Qt5 Calamares under GNOME 46 Wayland!
+        unset WAYLAND_DISPLAY
+        export XDG_RUNTIME_DIR="/tmp/calamares-runtime-root"
+        export QT_QPA_PLATFORM="xcb"
+    elif [[ -n "${WAYLAND_DISPLAY:-}" && -S "${WAYLAND_DISPLAY}" ]]; then
         ln -sfn "${WAYLAND_DISPLAY}" "/tmp/calamares-runtime-root/$(basename "${WAYLAND_DISPLAY}")"
         export WAYLAND_DISPLAY="$(basename "${WAYLAND_DISPLAY}")"
         export XDG_RUNTIME_DIR="/tmp/calamares-runtime-root"
         export QT_QPA_PLATFORM="wayland;xcb"
     else
-        unset WAYLAND_DISPLAY
         export XDG_RUNTIME_DIR="/tmp/calamares-runtime-root"
         export QT_QPA_PLATFORM="xcb"
     fi
