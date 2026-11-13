@@ -187,6 +187,30 @@ jobs:
           def send_serial(sock, text: str) -> None:
               sock.sendall(text.encode("utf-8"))
 
+          def qmp_switch_vt(vt_num: int) -> None:
+              qcode = f"f{vt_num}"
+              s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+              s.settimeout(5)
+              s.connect(qmp_sock)
+              f = s.makefile("r", encoding="utf-8")
+              _ = f.readline()
+              s.sendall(b'{"execute":"qmp_capabilities"}\n')
+              _ = f.readline()
+              payload = json.dumps({
+                  "execute": "send-key",
+                  "arguments": {
+                      "keys": [
+                          {"type": "qcode", "data": "ctrl"},
+                          {"type": "qcode", "data": "alt"},
+                          {"type": "qcode", "data": qcode},
+                      ],
+                      "hold-time": 120,
+                  },
+              }) + "\n"
+              s.sendall(payload.encode("utf-8"))
+              _ = f.readline()
+              s.close()
+
           def qmp_send_key(keys) -> None:
               s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
               s.settimeout(5)
@@ -248,8 +272,8 @@ jobs:
           probe2_cmd = (
               "GNOME_PID=$(pgrep -u kian -xo gnome-shell); "
               "env XDG_CURRENT_DESKTOP='zorin:GNOME' "
-              "$(sudo tr '\\0' '\\n' < /proc/${GNOME_PID}/environ | "
-              "grep -E '^(DBUS_SESSION_BUS_ADDRESS|XDG_RUNTIME_DIR|WAYLAND_DISPLAY|DISPLAY|XAUTHORITY)=') "
+              "XDG_RUNTIME_DIR='/run/user/1000' WAYLAND_DISPLAY='wayland-0' DISPLAY=':0' "
+              "DBUS_SESSION_BUS_ADDRESS='unix:path=/run/user/1000/bus' "
               "zorin-appearance >/tmp/appearance.log 2>&1 & "
               "sleep 6; "
               "if pgrep -u kian -f zorin-appearance >/dev/null 2>&1; then echo APPEARANCE_GUI_ALIVE_$((30+3)); "
@@ -259,9 +283,8 @@ jobs:
 
           probe3_cmd = (
               "pkill -f zorin-appearance || true; sleep 1; "
-              "GNOME_PID=$(pgrep -u kian -xo gnome-shell); "
-              "env $(sudo tr '\\0' '\\n' < /proc/${GNOME_PID}/environ | "
-              "grep -E '^(DBUS_SESSION_BUS_ADDRESS|XDG_RUNTIME_DIR|WAYLAND_DISPLAY|DISPLAY|XAUTHORITY)=') "
+              "env XDG_RUNTIME_DIR='/run/user/1000' WAYLAND_DISPLAY='wayland-0' DISPLAY=':0' "
+              "DBUS_SESSION_BUS_ADDRESS='unix:path=/run/user/1000/bus' "
               "/usr/bin/kian-install-os >/tmp/cal_wrap.log 2>&1 & "
               "for i in $(seq 1 30); do "
               "if pgrep -u root -x calamares >/dev/null 2>&1; then "
@@ -270,6 +293,7 @@ jobs:
               "break; "
               "fi; sleep 1; done; "
               "if ! pgrep -u root -x calamares >/dev/null 2>&1; then "
+              "ls -la /tmp/calamares-runtime-root /run/user/1000 2>&1 || true; "
               "cat /tmp/cal_wrap.log /tmp/calamares-launch.log 2>/dev/null || true; "
               "fi; "
               "echo KIYAN_PROBE3_DONE_$((300+45))\n"
@@ -324,6 +348,8 @@ jobs:
                           state = "WAIT_PROBE1"
                   elif state == "WAIT_PROBE1":
                       if "KIYAN_PROBE1_DONE_123" in tail:
+                          qmp_switch_vt(2)
+                          time.sleep(2.5)
                           qmp_send_key(["shift"])
                           time.sleep(1.5)
                           qmp_screendump(ppm_desk)

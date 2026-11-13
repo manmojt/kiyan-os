@@ -143,6 +143,7 @@ apt-get install -y --no-install-recommends \
     gnome-disk-utility baobab eog evince file-roller gnome-screenshot \
     gnome-power-manager power-profiles-daemon upower brightnessctl colord \
     packagekit flatpak gnome-software gnome-software-plugin-flatpak \
+    rtkit evolution-data-server \
     xwayland xorg xserver-xorg xserver-xorg-legacy x11-xkb-utils x11-xserver-utils \
     at-spi2-core ibus ibus-gtk ibus-gtk3 gnome-menus switcheroo-control iio-sensor-proxy bolt \
     desktop-file-utils xdg-user-dirs xdg-user-dirs-gtk \
@@ -517,7 +518,7 @@ EOF
 # System-wide udev rule to force Broadcast RGB = Full (0-255) & AMD ABM=0 on boot!
 mkdir -p "${TARGET_ROOTFS}/etc/udev/rules.d" "${TARGET_ROOTFS}/etc/profile.d"
 cat << 'EOF' > "${TARGET_ROOTFS}/etc/udev/rules.d/99-kiyan-display-crisp.rules"
-SUBSYSTEM=="drm", KERNEL=="card*", ATTR{amdgpu/panel_power_savings}="0"
+SUBSYSTEM=="drm", KERNEL=="card*", DRIVERS=="amdgpu", ATTR{amdgpu/panel_power_savings}="0"
 EOF
 
 cat << 'EOF' > "${TARGET_ROOTFS}/etc/profile.d/kiyan-wayland.sh"
@@ -644,6 +645,24 @@ if [[ ${EUID:-$(id -u)} -eq 0 ]]; then
         done
     fi
 
+    if [[ -z "${DISPLAY:-}" ]]; then
+        for xsock in /tmp/.X11-unix/X*; do
+            if [[ -S "${xsock}" ]]; then
+                export DISPLAY=":${xsock##*/X}"
+                break
+            fi
+        done
+    fi
+
+    if [[ -z "${XAUTHORITY:-}" || ! -f "${XAUTHORITY:-}" ]]; then
+        for xauth in /run/user/*/.mutter-Xwaylandauth.* /run/user/*/gdm/Xauthority /home/*/.Xauthority; do
+            if [[ -f "${xauth}" ]]; then
+                export XAUTHORITY="${xauth}"
+                break
+            fi
+        done
+    fi
+
     if [[ -n "${WAYLAND_DISPLAY:-}" && -S "${WAYLAND_DISPLAY}" ]]; then
         ln -sfn "${WAYLAND_DISPLAY}" "/tmp/calamares-runtime-root/$(basename "${WAYLAND_DISPLAY}")"
         export WAYLAND_DISPLAY="$(basename "${WAYLAND_DISPLAY}")"
@@ -655,48 +674,18 @@ if [[ ${EUID:-$(id -u)} -eq 0 ]]; then
         export QT_QPA_PLATFORM="xcb"
     fi
 
-    if [[ -z "${DISPLAY:-}" ]]; then
-        for xsock in /tmp/.X11-unix/X*; do
-            if [[ -S "${xsock}" ]]; then
-                export DISPLAY=":${xsock##*/X}"
-                break
-            fi
-        done
-    fi
-
-    if [[ -z "${XAUTHORITY:-}" || ! -f "${XAUTHORITY:-}" ]]; then
-        for xauth in /run/user/*/gdm/Xauthority /run/user/*/.mutter-Xwaylandauth.* /home/*/.Xauthority; do
-            if [[ -f "${xauth}" ]]; then
-                export XAUTHORITY="${xauth}"
-                break
-            fi
-        done
-    fi
-
     exec /usr/bin/calamares -D6 "$@" >>/tmp/calamares-launch.log 2>&1
 fi
 
 USER_UID="$(id -u)"
 USER_RUNTIME="${XDG_RUNTIME_DIR:-/run/user/${USER_UID}}"
 WL_ABS=""
-if [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
-    if [[ "${WAYLAND_DISPLAY}" == /* ]]; then
-        WL_ABS="${WAYLAND_DISPLAY}"
-    else
-        WL_ABS="${USER_RUNTIME}/${WAYLAND_DISPLAY}"
+for wsock in "${USER_RUNTIME}"/wayland-*; do
+    if [[ -S "${wsock}" && "${wsock}" != *.lock ]]; then
+        WL_ABS="${wsock}"
+        break
     fi
-    if [[ ! -S "${WL_ABS}" ]]; then
-        WL_ABS=""
-    fi
-fi
-if [[ -z "${WL_ABS}" ]]; then
-    for wsock in "${USER_RUNTIME}"/wayland-*; do
-        if [[ -S "${wsock}" && "${wsock}" != *.lock ]]; then
-            WL_ABS="${wsock}"
-            break
-        fi
-    done
-fi
+done
 
 X_DISP="${DISPLAY:-}"
 if [[ -z "${X_DISP}" ]]; then
@@ -710,7 +699,7 @@ fi
 
 X_AUTH="${XAUTHORITY:-}"
 if [[ -z "${X_AUTH}" || ! -f "${X_AUTH}" ]]; then
-    for xa in "${USER_RUNTIME}/gdm/Xauthority" "${USER_RUNTIME}"/.mutter-Xwaylandauth.* "$HOME/.Xauthority"; do
+    for xa in "${USER_RUNTIME}"/.mutter-Xwaylandauth.* "${USER_RUNTIME}/gdm/Xauthority" "$HOME/.Xauthority"; do
         if [[ -f "${xa}" ]]; then
             X_AUTH="${xa}"
             break
