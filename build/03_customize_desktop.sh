@@ -166,10 +166,10 @@ git clone --depth=1 https://github.com/vinceliuice/WhiteSur-icon-theme.git /tmp/
 /tmp/whitesur/icons/install.sh -d /usr/share/icons -n WhiteSur
 rm -rf /tmp/whitesur
 
-# 5. Install Blur-my-Shell v78 (GNOME 46) + Fullscreen-to-Empty-Workspace (macOS Fullscreen Spaces!)
+# 5. Install Blur-my-Shell v67 (Pure GNOME 46 Stable — No GNOME 49/50 Shader Crashes on Software GL!) + Fullscreen-to-Empty-Workspace
 mkdir -p /usr/share/gnome-shell/extensions/blur-my-shell@aunetx
 curl -fsSL --retry 4 -o /tmp/bms.zip \
-    "https://github.com/aunetx/blur-my-shell/releases/download/v78/blur-my-shell%40aunetx.shell-extension.zip"
+    "https://github.com/aunetx/blur-my-shell/releases/download/v67/blur-my-shell%40aunetx.shell-extension.zip"
 unzip -oq /tmp/bms.zip -d /usr/share/gnome-shell/extensions/blur-my-shell@aunetx
 cp -f /usr/share/gnome-shell/extensions/blur-my-shell@aunetx/schemas/*.gschema.xml /usr/share/glib-2.0/schemas/
 rm -f /tmp/bms.zip
@@ -271,24 +271,16 @@ if [[ -d "${DESKTOP_DIR}/plymouth/kiyan" ]]; then
     run_cmd cp -r "${DESKTOP_DIR}/plymouth/kiyan"/* "${TARGET_ROOTFS}/usr/share/plymouth/themes/kiyan/"
 fi
 
-# Set Zorin GNOME Shell mode base resource to ZorinBlue-Dark and include Kiyan extensions natively
-if [[ -f "${TARGET_ROOTFS}/usr/share/gnome-shell/modes/zorin.json" ]]; then
-    cat << 'ZJSON_EOF' > "${TARGET_ROOTFS}/usr/share/gnome-shell/modes/zorin.json"
-{
-    "parentMode": "user",
-    "stylesheetName": "gnome-shell.css",
-    "themeResourceName": "theme/ZorinBlue-Dark/gnome-shell-theme.gresource",
-    "enabledExtensions": [
-        "drive-menu@gnome-shell-extensions.gcampax.github.com",
-        "user-theme@gnome-shell-extensions.gcampax.github.com",
-        "zorin-appindicator@zorinos.com",
-        "zorin-printers@zorinos.com",
-        "blur-my-shell@aunetx",
-        "fullscreen-to-empty-workspace@aiono.dev"
-    ]
-}
-ZJSON_EOF
-fi
+# Ensure Zorin GNOME Shell theme gresource symlinks exist cleanly before mode initialization
+mkdir -p "${TARGET_ROOTFS}/usr/share/gnome-shell/theme"
+for ztheme in "${TARGET_ROOTFS}/usr/share/themes"/Zorin*; do
+    if [[ -d "${ztheme}" && -f "${ztheme}/gnome-shell/gnome-shell-theme.gresource" ]]; then
+        tname="$(basename "${ztheme}")"
+        mkdir -p "${TARGET_ROOTFS}/usr/share/gnome-shell/theme/${tname}"
+        ln -sfn "/usr/share/themes/${tname}/gnome-shell/gnome-shell-theme.gresource" \
+            "${TARGET_ROOTFS}/usr/share/gnome-shell/theme/${tname}/gnome-shell-theme.gresource"
+    fi
+done
 
 # Inject Unlocked macOS Sequoia & Windows 11 Centered Layouts directly into Zorin Appearance!
 if [[ -d "${DESKTOP_DIR}/zorin-pro-layouts" && -d "${TARGET_ROOTFS}/usr/lib/python3/dist-packages/zorin_appearance/Layouts" ]]; then
@@ -633,13 +625,15 @@ cat << 'EOF' > "${TARGET_ROOTFS}/usr/bin/kian-install-os"
 set -euo pipefail
 
 if [[ ${EUID:-$(id -u)} -eq 0 ]]; then
-    mkdir -p -m 0700 /tmp/calamares-runtime-root
-    chown 0:0 /tmp/calamares-runtime-root
+    RUNTIME_ROOT="/run/calamares-runtime-root"
+    mkdir -p -m 0700 "${RUNTIME_ROOT}"
+    chown 0:0 "${RUNTIME_ROOT}"
 
-    if [[ -z "${WAYLAND_DISPLAY:-}" ]]; then
+    if [[ -z "${WAYLAND_DISPLAY:-}" || ! -S "${WAYLAND_DISPLAY:-}" ]]; then
+        WAYLAND_DISPLAY=""
         for wsock in /run/user/*/wayland-*; do
             if [[ -S "${wsock}" && "${wsock}" != *.lock ]]; then
-                export WAYLAND_DISPLAY="${wsock}"
+                WAYLAND_DISPLAY="${wsock}"
                 break
             fi
         done
@@ -655,32 +649,25 @@ if [[ ${EUID:-$(id -u)} -eq 0 ]]; then
     fi
 
     if [[ -z "${XAUTHORITY:-}" || ! -f "${XAUTHORITY:-}" ]]; then
-        for xauth in /run/user/*/.mutter-Xwaylandauth.* /run/user/*/gdm/Xauthority /home/*/.Xauthority; do
-            if [[ -f "${xauth}" ]]; then
-                export XAUTHORITY="${xauth}"
-                break
-            fi
-        done
+        NEWEST_XA=$(ls -1t /run/user/*/.mutter-Xwaylandauth.* /run/user/*/gdm/Xauthority /home/*/.Xauthority 2>/dev/null | head -n 1 || true)
+        if [[ -n "${NEWEST_XA}" && -f "${NEWEST_XA}" ]]; then
+            export XAUTHORITY="${NEWEST_XA}"
+        fi
     fi
 
-    # Grant root access to the user's Wayland socket & runtime dir (mode 0700 blocks symlink traversal for UID 0 unless ACL or Xwayland is used!)
-    if [[ -n "${WAYLAND_DISPLAY:-}" && -S "${WAYLAND_DISPLAY}" ]] && command -v setfacl >/dev/null 2>&1; then
-        setfacl -m u:root:rx "$(dirname "${WAYLAND_DISPLAY}")" 2>/dev/null || true
-        setfacl -m u:root:rwx "${WAYLAND_DISPLAY}" 2>/dev/null || true
-    fi
-
-    if [[ -n "${DISPLAY:-}" && -n "${XAUTHORITY:-}" && -f "${XAUTHORITY}" ]]; then
-        # Xwayland/X11 provides 100% reliable crisp titlebars & positioning for Qt5 Calamares under GNOME 46 Wayland!
-        unset WAYLAND_DISPLAY
-        export XDG_RUNTIME_DIR="/tmp/calamares-runtime-root"
-        export QT_QPA_PLATFORM="xcb"
-    elif [[ -n "${WAYLAND_DISPLAY:-}" && -S "${WAYLAND_DISPLAY}" ]]; then
-        ln -sfn "${WAYLAND_DISPLAY}" "/tmp/calamares-runtime-root/$(basename "${WAYLAND_DISPLAY}")"
-        export WAYLAND_DISPLAY="$(basename "${WAYLAND_DISPLAY}")"
-        export XDG_RUNTIME_DIR="/tmp/calamares-runtime-root"
+    if [[ -n "${WAYLAND_DISPLAY:-}" && -S "${WAYLAND_DISPLAY}" ]]; then
+        if command -v setfacl >/dev/null 2>&1; then
+            setfacl -m u:root:rx "$(dirname "${WAYLAND_DISPLAY}")" 2>/dev/null || true
+            setfacl -m u:root:rwx "${WAYLAND_DISPLAY}" 2>/dev/null || true
+        fi
+        SOCK_NAME="$(basename "${WAYLAND_DISPLAY}")"
+        ln -sfn "${WAYLAND_DISPLAY}" "${RUNTIME_ROOT}/${SOCK_NAME}"
+        export WAYLAND_DISPLAY="${SOCK_NAME}"
+        export XDG_RUNTIME_DIR="${RUNTIME_ROOT}"
         export QT_QPA_PLATFORM="wayland;xcb"
     else
-        export XDG_RUNTIME_DIR="/tmp/calamares-runtime-root"
+        unset WAYLAND_DISPLAY
+        export XDG_RUNTIME_DIR="${RUNTIME_ROOT}"
         export QT_QPA_PLATFORM="xcb"
     fi
 
@@ -709,16 +696,12 @@ fi
 
 X_AUTH="${XAUTHORITY:-}"
 if [[ -z "${X_AUTH}" || ! -f "${X_AUTH}" ]]; then
-    for xa in "${USER_RUNTIME}"/.mutter-Xwaylandauth.* "${USER_RUNTIME}/gdm/Xauthority" "$HOME/.Xauthority"; do
-        if [[ -f "${xa}" ]]; then
-            X_AUTH="${xa}"
-            break
-        fi
-    done
+    X_AUTH=$(ls -1t "${USER_RUNTIME}"/.mutter-Xwaylandauth.* "${USER_RUNTIME}/gdm/Xauthority" "$HOME/.Xauthority" 2>/dev/null | head -n 1 || true)
 fi
 
 if command -v xhost >/dev/null 2>&1 && [[ -n "${X_DISP}" ]]; then
     DISPLAY="${X_DISP}" XAUTHORITY="${X_AUTH}" xhost +SI:localuser:root >/dev/null 2>&1 || true
+    DISPLAY="${X_DISP}" XAUTHORITY="${X_AUTH}" xhost +local:root >/dev/null 2>&1 || true
 fi
 
 if sudo -n true 2>/dev/null; then

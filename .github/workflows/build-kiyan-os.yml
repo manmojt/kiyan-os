@@ -238,30 +238,18 @@ jobs:
               print(f"QMP screendump ({out_ppm}) response:", resp.strip(), flush=True)
               s.close()
 
-          def gnome_wayland_screenshot(out_guest_png: str) -> str:
-              return (
-                  f"env XDG_RUNTIME_DIR='/run/user/1000' WAYLAND_DISPLAY='wayland-0' DISPLAY=':0' "
-                  f"DBUS_SESSION_BUS_ADDRESS='unix:path=/run/user/1000/bus' "
-                  f"gdbus call --session --dest org.gnome.Shell.Screenshot "
-                  f"--object-path /org/gnome/Shell/Screenshot "
-                  f"--method org.gnome.Shell.Screenshot.Screenshot false false {out_guest_png} >/dev/null 2>&1 || "
-                  f"env XDG_RUNTIME_DIR='/run/user/1000' WAYLAND_DISPLAY='wayland-0' DISPLAY=':0' "
-                  f"DBUS_SESSION_BUS_ADDRESS='unix:path=/run/user/1000/bus' "
-                  f"gnome-screenshot -f {out_guest_png} >/dev/null 2>&1 || true; "
-              )
-
           probe1_cmd = (
               "echo KIYAN_PROBE_BEGIN_$((10+1)); "
               "uname -a; "
               "ls -l /dev/ntsync; "
               "sudo /usr/share/calamares/hooks/pre-install-probe.sh >/tmp/preprobe.log 2>&1 && "
               "test -s /cdrom/casper/filesystem.squashfs && echo SQUASHFS_SOURCE_OK_$((50+5)); "
-              "for i in $(seq 1 90); do "
+              "for i in $(seq 1 120); do "
               "if pgrep -u kian -x gnome-shell >/dev/null 2>&1; then "
               "echo GNOME_WAYLAND_READY_$((40+2)); "
               "break; "
               "fi; sleep 1; done; "
-              "for i in $(seq 1 60); do "
+              "for i in $(seq 1 90); do "
               "if ls /run/user/1000/wayland-* >/dev/null 2>&1 || ls /tmp/.X11-unix/X* >/dev/null 2>&1; then "
               "echo DISPLAY_SOCKET_OPEN_$((60+6)); "
               "break; "
@@ -272,45 +260,47 @@ jobs:
               "echo \"SESSION sid=$sid type=$STYPE vt=$SVT\"; "
               "if [ \"$STYPE\" = \"wayland\" ] || [ \"$STYPE\" = \"x11\" ]; then "
               "sudo loginctl activate \"$sid\" || true; "
-              "if [ -n \"$SVT\" ] && [ \"$SVT\" != \"0\" ]; then sudo chvt \"$SVT\" || true; fi; "
               "break; "
               "fi; done; "
               "sleep 6; "
-              + gnome_wayland_screenshot("/tmp/shot_desk.png")
-              + "if [ -s /tmp/shot_desk.png ]; then echo SHOT1_B64_BEGIN; base64 -w0 /tmp/shot_desk.png; echo; echo SHOT1_B64_END; fi; "
               "echo KIYAN_PROBE1_DONE_$((100+23))\n"
           )
 
           probe2_cmd = (
+              "WL_CUR=$(ls /run/user/1000/wayland-* 2>/dev/null | grep -v '\\.lock$' | head -n1 | xargs -r basename); "
+              "X_CUR=$(ls /tmp/.X11-unix/X* 2>/dev/null | head -n1 | sed 's|.*/X|:|'); "
+              "echo \"ACTIVE_SOCKETS wayland=$WL_CUR x11=$X_CUR\"; "
+              "if ! pgrep -u kian -x gnome-shell >/dev/null 2>&1; then "
+              "echo 'WARN: gnome-shell not running before probe2; dumping journal:'; "
+              "sudo journalctl -b --no-pager | grep -Ei 'gnome-shell|mutter|gdm|segfault|trap|JS ERROR' | tail -n 40 || true; "
+              "fi; "
               "env XDG_CURRENT_DESKTOP='zorin:GNOME' "
-              "XDG_RUNTIME_DIR='/run/user/1000' WAYLAND_DISPLAY='wayland-0' DISPLAY=':0' "
+              "XDG_RUNTIME_DIR='/run/user/1000' WAYLAND_DISPLAY=\"${WL_CUR:-wayland-0}\" DISPLAY=\"${X_CUR:-:0}\" "
               "DBUS_SESSION_BUS_ADDRESS='unix:path=/run/user/1000/bus' "
               "zorin-appearance >/tmp/appearance.log 2>&1 & "
-              "sleep 6; "
+              "sleep 8; "
               "if pgrep -u kian -f zorin-appearance >/dev/null 2>&1; then echo APPEARANCE_GUI_ALIVE_$((30+3)); "
-              "else cat /tmp/appearance.log || true; fi; "
-              + gnome_wayland_screenshot("/tmp/shot_app.png")
-              + "if [ -s /tmp/shot_app.png ]; then echo SHOT2_B64_BEGIN; base64 -w0 /tmp/shot_app.png; echo; echo SHOT2_B64_END; fi; "
+              "else cat /tmp/appearance.log || true; sudo journalctl -b --no-pager | grep -Ei 'gnome-shell|mutter|gdm|segfault|trap|JS ERROR' | tail -n 40 || true; fi; "
               "echo KIYAN_PROBE2_DONE_$((200+11))\n"
           )
 
           probe3_cmd = (
               "pkill -f zorin-appearance || true; sleep 1; "
-              "env XDG_RUNTIME_DIR='/run/user/1000' WAYLAND_DISPLAY='wayland-0' DISPLAY=':0' "
+              "WL_CUR=$(ls /run/user/1000/wayland-* 2>/dev/null | grep -v '\\.lock$' | head -n1 | xargs -r basename); "
+              "X_CUR=$(ls /tmp/.X11-unix/X* 2>/dev/null | head -n1 | sed 's|.*/X|:|'); "
+              "env XDG_RUNTIME_DIR='/run/user/1000' WAYLAND_DISPLAY=\"${WL_CUR:-wayland-0}\" DISPLAY=\"${X_CUR:-:0}\" "
               "DBUS_SESSION_BUS_ADDRESS='unix:path=/run/user/1000/bus' "
               "/usr/bin/kian-install-os >/tmp/cal_wrap.log 2>&1 & "
-              "for i in $(seq 1 40); do "
+              "for i in $(seq 1 60); do "
               "if pgrep -u root -x calamares >/dev/null 2>&1; then "
-              "sleep 10; "
+              "sleep 12; "
               "if pgrep -u root -x calamares >/dev/null 2>&1; then echo CALAMARES_GUI_ALIVE_$((70+7)); fi; "
               "break; "
               "fi; sleep 1; done; "
               "if ! pgrep -u root -x calamares >/dev/null 2>&1; then "
-              "ls -la /tmp/calamares-runtime-root /run/user/1000 2>&1 || true; "
+              "sudo ls -la /run/calamares-runtime-root /run/user/1000 /tmp/.X11-unix 2>&1 || true; "
               "cat /tmp/cal_wrap.log /tmp/calamares-launch.log 2>/dev/null || true; "
               "fi; "
-              + gnome_wayland_screenshot("/tmp/shot_cal.png")
-              + "if [ -s /tmp/shot_cal.png ]; then echo SHOT3_B64_BEGIN; base64 -w0 /tmp/shot_cal.png; echo; echo SHOT3_B64_END; fi; "
               "echo KIYAN_PROBE3_DONE_$((300+45))\n"
           )
 
@@ -318,7 +308,7 @@ jobs:
           state_pos = 0
           state_ts = time.time()
           buf = ""
-          deadline = time.time() + 480
+          deadline = time.time() + 540
 
           with open(serial_log, "wb") as log_fh:
               while time.time() < deadline:
@@ -363,10 +353,16 @@ jobs:
                           state = "WAIT_PROBE1"
                   elif state == "WAIT_PROBE1":
                       if "KIYAN_PROBE1_DONE_123" in tail:
-                          qmp_switch_vt(2)
-                          time.sleep(2.5)
+                          m_vt = None
+                          for line in buf.splitlines():
+                              if "SESSION sid=" in line and "vt=" in line:
+                                  vts = line.split("vt=")[-1].strip()
+                                  if vts.isdigit() and int(vts) > 0:
+                                      m_vt = int(vts)
+                          qmp_switch_vt(m_vt or 2)
+                          time.sleep(4.0)
                           qmp_send_key(["shift"])
-                          time.sleep(1.5)
+                          time.sleep(2.0)
                           qmp_screendump(ppm_desk)
                           state_pos = len(buf)
                           send_serial(ser, probe2_cmd)
@@ -374,7 +370,7 @@ jobs:
                   elif state == "WAIT_PROBE2":
                       if "KIYAN_PROBE2_DONE_211" in tail:
                           qmp_send_key(["shift"])
-                          time.sleep(1.0)
+                          time.sleep(2.0)
                           qmp_screendump(ppm_app)
                           state_pos = len(buf)
                           send_serial(ser, probe3_cmd)
@@ -382,22 +378,13 @@ jobs:
                   elif state == "WAIT_PROBE3":
                       if "KIYAN_PROBE3_DONE_345" in tail:
                           qmp_send_key(["shift"])
-                          time.sleep(1.0)
+                          time.sleep(2.0)
                           qmp_screendump(ppm_cal)
                           break
 
           for p in (ppm_desk, ppm_app, ppm_cal):
               if not os.path.exists(p):
                   qmp_screendump(p)
-
-          import base64, re
-          for idx, out_png in ((1, "/tmp/qemu-live/shot_desk.png"), (2, "/tmp/qemu-live/shot_app.png"), (3, "/tmp/qemu-live/shot_cal.png")):
-              m = re.search(rf"SHOT{idx}_B64_BEGIN\s+([A-Za-z0-9+/=\s]+?)\s+SHOT{idx}_B64_END", buf)
-              if m:
-                  raw = re.sub(r"\s+", "", m.group(1))
-                  with open(out_png, "wb") as fpng:
-                      fpng.write(base64.b64decode(raw))
-                  print(f"Extracted native GNOME Wayland screenshot {out_png} ({os.path.getsize(out_png)} bytes)", flush=True)
 
           ser.close()
           proc.terminate()
@@ -407,22 +394,10 @@ jobs:
               proc.kill()
           PY
 
-          if [[ -s /tmp/qemu-live/shot_desk.png ]]; then
-            cp -f /tmp/qemu-live/shot_desk.png "output/desktop_${EDITION}.png"
-          else
-            convert /tmp/qemu-live/live_desktop.ppm "output/desktop_${EDITION}.png"
-          fi
-          if [[ -s /tmp/qemu-live/shot_app.png ]]; then
-            cp -f /tmp/qemu-live/shot_app.png "output/appearance_${EDITION}.png"
-          else
-            convert /tmp/qemu-live/appearance_desktop.ppm "output/appearance_${EDITION}.png"
-          fi
-          if [[ -s /tmp/qemu-live/shot_cal.png ]]; then
-            cp -f /tmp/qemu-live/shot_cal.png "output/calamares_${EDITION}.png"
-          else
-            convert /tmp/qemu-live/calamares_desktop.ppm "output/calamares_${EDITION}.png"
-          fi
-          grep -Ev '^A{20,}|^[A-Za-z0-9+/=]{200,}' /tmp/qemu-live/live_serial.log > "output/live_serial_${EDITION}.log" || cp -f /tmp/qemu-live/live_serial.log "output/live_serial_${EDITION}.log"
+          convert /tmp/qemu-live/live_desktop.ppm "output/desktop_${EDITION}.png"
+          convert /tmp/qemu-live/appearance_desktop.ppm "output/appearance_${EDITION}.png"
+          convert /tmp/qemu-live/calamares_desktop.ppm "output/calamares_${EDITION}.png"
+          cp -f /tmp/qemu-live/live_serial.log "output/live_serial_${EDITION}.log"
 
           tail -n 80 "output/live_serial_${EDITION}.log" | tr -d '\033\r'
 
