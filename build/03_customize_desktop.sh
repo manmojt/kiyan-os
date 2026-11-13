@@ -481,16 +481,6 @@ for df in "$HOME"/Desktop/*.desktop; do
         gio set "$df" metadata::trusted true 2>/dev/null || true
     fi
 done
-# 3. Virtual machines without 3D acceleration render GNOME Shell on CPU (llvmpipe/kms_swrast).
-#    GPU-heavy shader extensions (blur, magic-lamp) can crash Mutter there, so turn them off ONLY in VMs.
-#    Real hardware (AMD/Intel/NVIDIA) keeps the full frosted-glass look.
-if command -v systemd-detect-virt >/dev/null 2>&1 && systemd-detect-virt -q --vm; then
-    CUR_EXT=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo "[]")
-    NEW_EXT=$(printf '%s' "$CUR_EXT" | sed -e "s/, *'blur-my-shell@aunetx'//g" -e "s/'blur-my-shell@aunetx', *//g" \
-        -e "s/, *'zorin-magic-lamp-effect@zorinos.com'//g" -e "s/'zorin-magic-lamp-effect@zorinos.com', *//g")
-    gsettings set org.gnome.shell enabled-extensions "$NEW_EXT" 2>/dev/null || true
-    gsettings set org.gnome.desktop.interface enable-animations false 2>/dev/null || true
-fi
 mkdir -p "$HOME/.config/kiyan"
 touch "$HOME/.config/kiyan/.initialized_v4"
 EOF

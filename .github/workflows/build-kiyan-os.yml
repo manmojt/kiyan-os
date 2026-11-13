@@ -136,7 +136,7 @@ jobs:
           done
           test -n "$OVMF_CODE"
 
-          KVM_FLAGS=(-cpu max -smp 4)
+          KVM_FLAGS=(-cpu Nehalem -smp 4)
           if [[ -r /dev/kvm && -w /dev/kvm ]]; then
             KVM_FLAGS=(-enable-kvm -cpu host -smp 4)
           fi
