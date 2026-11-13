@@ -272,6 +272,7 @@ jobs:
               "WL_CUR=$(ls /run/user/1000/wayland-* 2>/dev/null | grep -v '\\.lock$' | head -n1 | xargs -r basename); "
               "X_CUR=$(ls /tmp/.X11-unix/X* 2>/dev/null | head -n1 | sed 's|.*/X|:|'); "
               "echo \"ACTIVE_SOCKETS wayland=$WL_CUR x11=$X_CUR\"; "
+              "echo \"SHELL_PIDS_P2=$(pgrep -u kian -x gnome-shell | tr '\\n' ' ') VIRT=$(systemd-detect-virt) EXT=$(env DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus gsettings get org.gnome.shell enabled-extensions)\"; "
               "if ! pgrep -u kian -x gnome-shell >/dev/null 2>&1; then "
               "echo 'WARN: gnome-shell not running before probe2; dumping journal:'; "
               "sudo journalctl -b --no-pager | grep -Ei 'gnome-shell|mutter|gdm|segfault|trap|JS ERROR' | tail -n 40 || true; "
@@ -302,6 +303,8 @@ jobs:
               "if ! pgrep -u root -x calamares >/dev/null 2>&1; then "
               "sudo ls -la /run/calamares-runtime-root /run/user/1000 /tmp/.X11-unix 2>&1 || true; "
               "cat /tmp/cal_wrap.log /tmp/calamares-launch.log 2>/dev/null || true; "
+              "echo \"SHELL_PIDS_NOW=$(pgrep -u kian -x gnome-shell | tr '\\n' ' ')\"; "
+              "sudo journalctl -b --no-pager -o short-monotonic | grep -Ei 'gnome-shell|mutter|coredump|segfault|trap|JS ERROR|Xwayland|gnome-session' | tail -n 60 || true; "
               "fi; "
               "echo KIYAN_PROBE3_DONE_$((300+45))\n"
           )
