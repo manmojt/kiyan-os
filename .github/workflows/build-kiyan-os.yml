@@ -260,6 +260,8 @@ jobs:
               "echo \"SESSION sid=$sid type=$STYPE vt=$SVT\"; "
               "if [ \"$STYPE\" = \"wayland\" ] || [ \"$STYPE\" = \"x11\" ]; then "
               "sudo loginctl activate \"$sid\" || true; "
+              "if [ -n \"$SVT\" ] && [ \"$SVT\" != \"0\" ]; then sudo chvt \"$SVT\" || true; fi; "
+              "sleep 3; echo \"ACTIVE_VT=$(sudo fgconsole 2>&1)\"; "
               "break; "
               "fi; done; "
               "sleep 6; "

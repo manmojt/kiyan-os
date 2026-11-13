@@ -664,7 +664,12 @@ if [[ ${EUID:-$(id -u)} -eq 0 ]]; then
         ln -sfn "${WAYLAND_DISPLAY}" "${RUNTIME_ROOT}/${SOCK_NAME}"
         export WAYLAND_DISPLAY="${SOCK_NAME}"
         export XDG_RUNTIME_DIR="${RUNTIME_ROOT}"
-        export QT_QPA_PLATFORM="wayland;xcb"
+        # Mutter drops root-owned Qt5 Wayland clients ("Wayland connection broke"); prefer Xwayland (xcb) like Ubuntu/Kubuntu live installers
+        if [[ -n "${DISPLAY:-}" ]]; then
+            export QT_QPA_PLATFORM="xcb;wayland"
+        else
+            export QT_QPA_PLATFORM="wayland;xcb"
+        fi
     else
         unset WAYLAND_DISPLAY
         export XDG_RUNTIME_DIR="${RUNTIME_ROOT}"
